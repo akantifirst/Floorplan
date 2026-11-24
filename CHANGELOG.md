@@ -4,6 +4,13 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.32.1.9] – fork: animated person
+
+### Fixed
+
+- **The person faces straight ahead.** Which way the model faces was taken from the line between its hips, but this model's rest pose stands in a stride (the right hip 11 cm ahead of the left), which turned the whole figure by 27°: it walked turned sideways, lay crooked on its back, and the two side-sleeping poses differed (an arm went into the body on one side). It is now taken from the shoulders.
+- **Symmetric sleep.** Asleep the trunk goes back to the model's straight rest pose (the idle clip's standing twist is gone), the hips are levelled where the pose sets the legs (sitting, squatting, lying) without moving the trunk, the feet follow the shins, and the upper shin lies along the mattress: both sides are now mirror images and nothing sinks into the bed.
+
 ## [0.32.1.8] – fork: animated person
 
 ### Changed

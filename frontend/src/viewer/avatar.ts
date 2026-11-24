@@ -217,6 +217,7 @@ function orient(bone: Bone | null, tip: Object3D | null, a: Object3D | null, b: 
 }
 
 const LEFT = new Vector3(1, 0, 0);
+const UP = new Vector3(0, 1, 0);
 
 /** The index-to-little-finger line that gives a hand of side s the palm normal `palm` with the fingers along `fingers`. */
 function palmAcross(s: 0 | 1, palm: Vector3, fingers: Vector3): Vector3 {
@@ -309,12 +310,31 @@ export class Avatar {
    */
   private clipPose: [Bone, Quaternion, Vector3][] = [];
   /**
+   * The trunk (hips to head, with the shoulders) as the model is built: straight and symmetric. The idle clip turns the
+   * chest and shoulders like a standing person shifting weight; lying down that twist made the back pose lopsided and
+   * sent an arm into the body on one side, so asleep the trunk goes back to this.
+   */
+  private trunkRest: [Bone, Quaternion][] = [];
+  /**
+   * The rest pose may stand in a stride: the bone the legs hang from is turned (this model: the right hip 11 cm ahead).
+   * Where the pose sets the legs (sitting, squatting, lying) that bone turns back by `strideYaw` so the hips are level,
+   * and the trunk above it (`strideTrunk`) turns the other way so it stays as it was.
+   */
+  private strideYaw = 0;
+  private strideRoot: Bone | null = null;
+  private strideTrunk: Bone | null = null;
+  /** How far levelling the stride moves the hips sideways (body frame); the figure is moved back by it. */
+  private strideShift = new Vector3();
+  private innerAt = new Vector3();
+  /**
    * The ankle at the end of each shin, carried by the shin. In IK rigs (Quaternius and the like) the foot is not a child of
    * the shin but of the root, so it stays where the clip put it when the body sits down: the shin's skin would stretch to
    * it. The legs aim with these, and a detached foot is moved onto them.
    */
   private ankles: (Object3D | null)[] = [null, null];
   private detachedFeet: boolean[] = [false, false];
+  /** The foot's turn relative to the shin in the rest pose: lying down, a detached foot keeps this angle at the ankle. */
+  private ankleTurn: (Quaternion | null)[] = [null, null];
   private rest = { hipY: 0.95, ankleY: 0.08, footX: 0.1, thigh: 0.45, shin: 0.45, upperArm: 0.28, foreArm: 0.26 };
   private phone: Mesh;
   private own: Material[] = [];
@@ -375,6 +395,11 @@ export class Avatar {
     inst.traverse((o) => {
       if ((o as Bone).isBone) this.clipPose.push([o as Bone, (o as Bone).quaternion.clone(), (o as Bone).position.clone()]);
     });
+    const trunk = /^(hips|pelvis|abdomen|spine\d*|torso|chest|upperchest|neck|head|shoulder(l|r|left|right)|(left|right)shoulder|clavicle(l|r))$/;
+    inst.traverse((o) => {
+      const name = norm(o.name).replace(/^(mixamorig|characterarmature)/, "");
+      if ((o as Bone).isBone && trunk.test(name)) this.trunkRest.push([o as Bone, (o as Bone).quaternion.clone()]);
+    });
     inst.updateMatrixWorld(true);
     for (const s of [0, 1] as Side[]) {
       const lower = this.rig.lowerLeg[s];
@@ -387,8 +412,11 @@ export class Avatar {
       let up: Object3D | null = foot.parent;
       while (up && up !== lower) up = up.parent;
       this.detachedFeet[s] = up !== lower;
+      this.ankleTurn[s] = lower.getWorldQuaternion(new Quaternion()).invert().multiply(foot.getWorldQuaternion(new Quaternion()));
     }
     this.normalise(height);
+    this.innerAt.copy(this.inner.position);
+    this.measureStride();
     this.mixer = new AnimationMixer(inst);
     this.clips = model.clips;
     this.mixer.addEventListener("finished", () => this.clipFinished());
@@ -406,8 +434,11 @@ export class Avatar {
   private normalise(height: number): void {
     const r = this.rig;
     this.group.updateMatrixWorld(true);
-    if (r.upperLeg[0] && r.upperLeg[1]) {
-      const left = r.upperLeg[0].getWorldPosition(new Vector3()).sub(r.upperLeg[1].getWorldPosition(new Vector3()));
+    // which way it faces, from the line between the shoulders (between the hips when it has no arms): the hips of a rest
+    // pose may stand in a stride (this model's right hip is 11 cm ahead of the left), which turned the whole figure by 27°
+    const [sideL, sideR] = r.upperArm[0] && r.upperArm[1] ? r.upperArm : r.upperLeg;
+    if (sideL && sideR) {
+      const left = sideL.getWorldPosition(new Vector3()).sub(sideR.getWorldPosition(new Vector3()));
       // forward = left × up
       const [fx, fz] = [-left.z, left.x];
       if (Math.hypot(fx, fz) > 1e-6) this.inner.rotation.y = -Math.atan2(fx, fz);
@@ -441,6 +472,36 @@ export class Avatar {
       this.rest.upperArm = shoulder.distanceTo(elbow);
       this.rest.foreArm = elbow.distanceTo(wrist);
     }
+  }
+
+  /** Find the stride of the rest pose (see strideYaw); call after normalise, in the rest pose. */
+  private measureStride(): void {
+    const r = this.rig;
+    const root = r.upperLeg[0]?.parent as Bone | undefined;
+    if (!root?.isBone || root !== r.upperLeg[1]?.parent) return;
+    const p = (b: Bone) => this.body.worldToLocal(b.getWorldPosition(new Vector3()));
+    const left = p(r.upperLeg[0]!).sub(p(r.upperLeg[1]!));
+    const yaw = Math.atan2(left.z, left.x);
+    if (Math.abs(yaw) < 0.03) return;
+    // the child of the leg root that carries the trunk (when the legs hang from the hips themselves, there is none to
+    // turn back and the stride stays)
+    const up = r.spine ?? r.chest;
+    let trunk: Object3D | null = up;
+    while (trunk && trunk.parent !== root) trunk = trunk.parent;
+    if (!trunk || !(trunk as Bone).isBone) return;
+    this.strideYaw = yaw;
+    this.strideRoot = root;
+    this.strideTrunk = trunk as Bone;
+    // try the levelling once in the rest pose to see how far it moves the middle of the trunk, then undo it
+    const mid = () => p(r.upperLeg[0]!).add(p(r.upperLeg[1]!)).multiplyScalar(0.5).add(r.neck ? p(r.neck) : p(this.strideTrunk!)).multiplyScalar(0.5);
+    const [q0, q1] = [root.quaternion.clone(), this.strideTrunk.quaternion.clone()];
+    const before = mid();
+    turn(root, UP, yaw, this.body);
+    turn(this.strideTrunk, UP, -yaw, this.body);
+    this.strideShift.copy(before.sub(mid())).setY(0);
+    root.quaternion.copy(q0);
+    this.strideTrunk.quaternion.copy(q1);
+    this.group.updateMatrixWorld(true);
   }
 
   // ---------------------------------------------------------------- clips
@@ -683,6 +744,7 @@ export class Avatar {
     const body = this.body;
     body.position.set(0, 0, 0);
     body.rotation.set(0, 0, 0);
+    this.inner.position.copy(this.innerAt);
     this.phone.visible = false;
     if (!spot || w <= 0.001) {
       this.group.updateMatrixWorld(true);
@@ -716,7 +778,15 @@ export class Avatar {
       squat = ((1 - Math.cos((2 * Math.PI * t) / 3.2)) / 2) * w;
       body.position.set(0, -0.42 * squat, -0.12 * squat);
     }
+    if (pose === "sleep") for (const [bone, q] of this.trunkRest) bone.quaternion.slerp(q, w);
     this.group.updateMatrixWorld(true);
+    if (this.strideRoot && (pose === "sit" || pose === "sit_type" || pose === "phone" || pose === "squat" || pose === "sleep")) {
+      // level the hips of a rest pose in a stride; the trunk keeps its turn, the figure stays centred
+      this.inner.position.copy(this.innerAt).addScaledVector(this.strideShift, w);
+      this.group.updateMatrixWorld(true);
+      turn(this.strideRoot, UP, this.strideYaw * w, body);
+      turn(this.strideTrunk, UP, -this.strideYaw * w, body);
+    }
     const sit = pose === "sit" || pose === "sit_type" || pose === "phone";
 
     // ---- spine and head
@@ -744,7 +814,7 @@ export class Avatar {
         // onto the mattress, its shin lying along it, and the lower leg is bent a little
         const top = s !== down;
         const thigh = top ? v3(-sign * 0.66, 0.1, 0.75) : v3(sign * 0.04, -0.95, 0.3);
-        const shin = top ? v3(-sign * 0.12, -0.95, -0.25) : v3(sign * 0.02, -0.95, -0.3);
+        const shin = top ? v3(sign * 0.05, -0.95, -0.25) : v3(sign * 0.02, -0.95, -0.3);
         aim(r.upperLeg[s], r.lowerLeg[s], v3(sign * 0.06, -1, 0.02).lerp(thigh, side), body, w);
         aim(r.lowerLeg[s], this.ankles[s], v3(sign * 0.02, -1, 0).lerp(shin, side), body, w);
       }
@@ -756,6 +826,10 @@ export class Avatar {
         foot.updateMatrixWorld(true);
       }
       if (pose !== "sleep") holdWorld(foot, feetWorld[s]!, w);
+      else if (this.detachedFeet[s] && foot && r.lowerLeg[s] && this.ankleTurn[s]) {
+        // asleep the foot goes along with the shin (the clip's standing foot pointed into the mattress on one side)
+        holdWorld(foot, r.lowerLeg[s]!.getWorldQuaternion(new Quaternion()).multiply(this.ankleTurn[s]!), w);
+      }
     }
 
     // ---- arms
