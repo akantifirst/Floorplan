@@ -4,6 +4,12 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.32.1.6] – fork: animated person
+
+### Added
+
+- **Turning over in sleep.** Every 20 s the sleeper rolls over about the spine in about 3 s: on the back, onto the left side, back, onto the right side and so on. On a side the upper leg is drawn up, the lower one bent a little, the lower arm lies under the pillow and the upper one on it. While the sleeper lies still no frames are drawn; a timer wakes the view for the next turn.
+
 ## [0.32.1.5] – fork: animated person
 
 ### Fixed

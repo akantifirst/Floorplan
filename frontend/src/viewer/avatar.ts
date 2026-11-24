@@ -252,10 +252,38 @@ export interface AvatarSpot extends AvatarSpotInfo {
   stand: Vec2;
 }
 
+/** Sleep: each position is held this long (s), a turn takes SLEEP_TURN (s); the order back, left, back, right. */
+const SLEEP_EACH = 20;
+const SLEEP_TURN = 3;
+const SLEEP_ORDER = [0, 1, 0, -1] as const;
+/** How far it rolls onto a side (a little past 90°, a touch onto the belly as people lie) and how much higher it lies then. */
+const SIDE_ROLL = (95 * Math.PI) / 180;
+const SIDE_LIFT = 0.17;
+
 const smooth = (t: number) => {
   const x = Math.max(0, Math.min(1, t));
   return x * x * (3 - 2 * x);
 };
+
+export interface SleepTurn {
+  /** Roll about the spine, radians (+ = the left side down). */
+  roll: number;
+  /** Turning over right now (frames needed). */
+  turning: boolean;
+  /** Seconds until the next turn starts. */
+  next: number;
+}
+
+/** Turning over in sleep, `elapsed` seconds after lying down: back, left side, back, right side, each SLEEP_EACH s. */
+export function sleepTurnAt(elapsed: number): SleepTurn {
+  const el = Math.max(0, elapsed);
+  const seg = Math.floor(el / SLEEP_EACH);
+  const into = el - seg * SLEEP_EACH;
+  const from = SLEEP_ORDER[(seg + SLEEP_ORDER.length - 1) % SLEEP_ORDER.length]!;
+  const to = SLEEP_ORDER[seg % SLEEP_ORDER.length]!;
+  const k = seg === 0 ? 1 : smooth(into / SLEEP_TURN);
+  return { roll: (from + (to - from) * k) * SIDE_ROLL, turning: seg > 0 && into < SLEEP_TURN + 0.1, next: SLEEP_EACH - into };
+}
 
 type Phase = "posed" | "rising" | "walking" | "settling" | "hidden";
 
@@ -305,6 +333,10 @@ export class Avatar {
   private stroll = 60;
   private state: string | null = null;
   private settleFrom: { pos: Vec2; heading: number } | null = null;
+  /** Wall clock (s): the frames stop while nobody moves, so turning over in sleep cannot use the frame time. */
+  clock = (): number => performance.now() / 1000;
+  /** When it lay down to sleep (clock time). */
+  private sleepSince = 0;
   floorId: string;
   private readonly speed: number;
 
@@ -579,6 +611,7 @@ export class Avatar {
           }
           this.phase = "settling";
           this.settleFrom = { pos: [...this.pos] as Vec2, heading: this.heading };
+          this.sleepSince = this.clock();
           this.cue = 3 + Math.random() * 4;
           this.setBase(this.spot?.pose === "box" ? "punchl" : this.spot?.pose === "wave" ? "wave" : "idle", 0.3, this.spot?.pose === "box");
         }
@@ -606,7 +639,7 @@ export class Avatar {
             this.cue = 6 + Math.random() * 6;
           }
         }
-        moving = this.spot?.pose !== "sleep";
+        moving = this.spot?.pose !== "sleep" || this.sleepTurn().turning;
         break;
       }
     }
@@ -656,11 +689,19 @@ export class Avatar {
     // feet as the clip has them, to keep them flat after the legs moved
     const feetWorld = r.foot.map((f) => (f ? f.getWorldQuaternion(new Quaternion()) : null));
     let squat = 0;
+    // sleeping on a side: how far (0 on the back … 1 on the side) and which side is down (0 = left)
+    let side = 0;
+    let down: Side = 0;
     if (pose === "sleep") {
       // tip over backwards onto the bed: the head towards the spot's back, the hips over its middle
+      // and every 20 s it turns over about its spine: on the back, the left side, the back, the right side …
       const th = (-Math.PI / 2) * w;
-      const hipsTo = rest.hipY + (spot.seat + 0.12 - rest.hipY) * w;
-      body.rotation.x = th;
+      const roll = this.sleepTurn().roll * w;
+      side = Math.abs(Math.sin(roll));
+      down = roll > 0 ? 0 : 1;
+      // on its side the shoulder and hip carry it: a little higher than on its back
+      const hipsTo = rest.hipY + (spot.seat + 0.12 + SIDE_LIFT * (rest.hipY / 0.92) * side - rest.hipY) * w;
+      body.rotation.set(th, roll, 0);
       body.position.set(0, hipsTo - rest.hipY * Math.cos(th), -rest.hipY * Math.sin(th));
     } else if (pose === "sit" || pose === "sit_type" || pose === "phone") {
       body.position.y = (spot.seat + 0.1 - rest.hipY) * w;
@@ -693,8 +734,12 @@ export class Avatar {
       } else if (pose === "squat") {
         this.legTo(s, v3(sign * rest.footX * (1 + 0.4 * w), rest.ankleY - body.position.y, -body.position.z), v3(sign * 0.25, 0.2, 1), w);
       } else if (pose === "sleep") {
-        aim(r.upperLeg[s], r.lowerLeg[s], v3(sign * 0.06, -1, 0.02), body, w);
-        aim(r.lowerLeg[s], this.ankles[s], v3(sign * 0.02, -1, 0), body, w);
+        // on the back the legs lie straight; on a side the upper leg is drawn up, the lower one bent a little
+        const top = s !== down;
+        const thigh = top ? v3(sign * 0.05, -0.5, 0.87) : v3(sign * 0.04, -0.95, 0.3);
+        const shin = top ? v3(sign * 0.05, -0.9, -0.42) : v3(sign * 0.02, -0.95, -0.3);
+        aim(r.upperLeg[s], r.lowerLeg[s], v3(sign * 0.06, -1, 0.02).lerp(thigh, side), body, w);
+        aim(r.lowerLeg[s], this.ankles[s], v3(sign * 0.02, -1, 0).lerp(shin, side), body, w);
       }
       // a foot of an IK rig goes along with the shin it no longer follows by itself
       const foot = r.foot[s];
@@ -737,8 +782,12 @@ export class Avatar {
           break;
         }
         case "sleep": {
-          aim(up, low, v3(sign * 0.2, -1, 0.06), body, w);
-          aim(low, hand, v3(sign * 0.06, -1, 0.18), body, w);
+          // on the back the arms lie along the body; on a side the lower one is under the pillow, the upper one on it
+          const top = s !== down;
+          const upper = top ? v3(sign * 0.15, 0.45, 0.88) : v3(sign * 0.35, 0.85, 0.35);
+          const fore = top ? v3(-sign * 0.2, 0.85, 0.45) : v3(-sign * 0.45, 0.55, 0.6);
+          aim(up, low, v3(sign * 0.2, -1, 0.06).lerp(upper, side).normalize(), body, w);
+          aim(low, hand, v3(sign * 0.06, -1, 0.18).lerp(fore, side).normalize(), body, w);
           break;
         }
         case "squat": {
@@ -771,6 +820,19 @@ export class Avatar {
       this.phone.visible = true;
       if (r.head) this.phone.lookAt(r.head.getWorldPosition(_d));
     }
+  }
+
+  /**
+   * Turning over in sleep, by the clock: 20 s on the back, then 20 s on the left side, on the back, on the right side
+   * and so on; each turn takes TURN seconds. The roll (radians, + = left side down) and whether it is turning now.
+   */
+  sleepTurn(): SleepTurn {
+    return sleepTurnAt(this.clock() - this.sleepSince);
+  }
+
+  /** Seconds until it needs frames again while it rests (the next turn in sleep), or null. */
+  wakeIn(): number | null {
+    return this.phase === "posed" && this.spot?.pose === "sleep" ? this.sleepTurn().next : null;
   }
 
   /** Where the phone is held (body frame): in front of the chest, scaled with the person. */

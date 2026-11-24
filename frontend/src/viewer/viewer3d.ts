@@ -312,6 +312,8 @@ export class NextFloorViewer {
   private avatarNavs = new Map<string, NavGrid | null>();
   private avatarLast = 0;
   private petTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Wakes the view when a resting avatar moves again (turning over in sleep). */
+  private avatarTimer: ReturnType<typeof setTimeout> | undefined;
   private robotGeo: BufferGeometry | null = null;
   /** The pad each robot has driven, by robot id: the ribbon of its own map's trail. */
   private readonly robotTrails = new Map<string, Mesh>();
@@ -1378,6 +1380,7 @@ export class NextFloorViewer {
     this.renderer?.domElement?.removeEventListener?.("pointerup", this.onRightUp);
     this.renderer?.domElement?.removeEventListener?.("contextmenu", this.onContext);
     clearTimeout(this.petTimer);
+    clearTimeout(this.avatarTimer);
     for (const a of this.avatars?.values() ?? []) a.avatar?.dispose();
     this.avatars?.clear();
     this.controls.dispose();
@@ -3249,6 +3252,12 @@ export class NextFloorViewer {
       moving = av.step(dt) || moving;
     }
     if (!moving) this.avatarLast = 0;
+    // while they rest no frames are drawn: a timer wakes the view for the next turn in sleep
+    clearTimeout(this.avatarTimer);
+    if (!moving) {
+      const next = Math.min(...[...this.avatars.values()].map((a) => a.avatar?.wakeIn() ?? Infinity));
+      if (Number.isFinite(next)) this.avatarTimer = setTimeout(() => this.invalidate(), next * 1000 + 50);
+    }
     return moving;
   }
 
