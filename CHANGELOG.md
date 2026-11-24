@@ -4,6 +4,12 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.32.1.7] – fork: animated person
+
+### Changed
+
+- **A smooth robot pad.** The robot's trail is rounded off before it is drawn (points closer than 3 cm dropped, then Chaikin corner cutting), drawn as one mitred ribbon with round ends and round sharp turns, and painted through the stencil so overlaps no longer show as darker hexagons: one even, soft-edged sheet instead of an angular patchwork.
+
 ## [0.32.1.6] – fork: animated person
 
 ### Added
