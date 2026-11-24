@@ -112,8 +112,8 @@ export class NavGrid {
     return i >= 0 && j >= 0 && i < this.nx && j < this.nz && this.free[j * this.nx + i] === 1;
   }
 
-  /** The free cell nearest to p (within 1.5 m), or null. */
-  nearestFree(p: Vec2): [number, number] | null {
+  /** The free cell nearest to p (within 1.5 m) that `accept` takes (any, without it), or null. */
+  nearestFree(p: Vec2, accept?: (c: Vec2) => boolean): [number, number] | null {
     const [ci, cj] = this.index(p);
     const reach = Math.ceil(1.5 / this.cell);
     let best: [number, number] | null = null;
@@ -123,7 +123,7 @@ export class NavGrid {
         if (i < 0 || j < 0 || i >= this.nx || j >= this.nz || !this.free[j * this.nx + i]) continue;
         const c = this.center(i, j);
         const d = Math.hypot(c[0] - p[0], c[1] - p[1]);
-        if (d < bestD) [best, bestD] = [[i, j], d];
+        if (d < bestD && (!accept || accept(c))) [best, bestD] = [[i, j], d];
       }
     return best;
   }

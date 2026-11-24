@@ -3205,18 +3205,23 @@ export class NextFloorViewer {
         this.avatars.delete(id);
       }
     this.avatarSpots = spots;
-    // where the walk to a spot ends: the spot itself, or next to the furniture it is in (behind it first: the chair is pulled out)
+    // where the walk to a spot ends: the spot itself, or next to the furniture it is in (behind it first: the chair is pulled out),
+    // always in the spot's own room: the nearest free place may lie behind a wall (a bed pushed against it), and the last
+    // step from there to the spot goes straight, through that wall
     for (const s of spots) {
       const nav = this.avatarNav(s.floorId);
       if (!nav || nav.isFree(s.pos)) continue;
+      const floor = this.floorMap.get(s.floorId)?.floor;
+      const room = floor?.rooms.find((r) => r.points.length >= 3 && pointInPolygon(s.pos, r.points));
+      const inRoom = (p: Vec2) => !room || pointInPolygon(p, room.points);
       const back: Vec2 = [-Math.sin(s.heading), -Math.cos(s.heading)];
       let stand: Vec2 | null = null;
       for (let d = 0.1; d <= 1.2 && !stand; d += 0.05) {
         const p: Vec2 = [s.pos[0] + back[0] * d, s.pos[1] + back[1] * d];
-        if (nav.isFree(p)) stand = p;
+        if (nav.isFree(p) && inRoom(p)) stand = p;
       }
       if (!stand) {
-        const c = nav.nearestFree(s.pos);
+        const c = nav.nearestFree(s.pos, inRoom) ?? nav.nearestFree(s.pos);
         if (c) stand = nav.center(c[0], c[1]);
       }
       if (stand) s.stand = stand;

@@ -228,6 +228,8 @@ const PHONE_AT = { y: 0.06, z: 0.26 };
 /** How far in front of the palms the phone lies, towards the face (m). */
 const PHONE_GAP = 0.045;
 const UP = new Vector3(0, 1, 0);
+/** How far the toes turn out when the pose sets the feet (radians). */
+const TOE_OUT = (10 * Math.PI) / 180;
 
 /** The index-to-little-finger line that gives a hand of side s the palm normal `palm` with the fingers along `fingers`. */
 function palmAcross(s: 0 | 1, palm: Vector3, fingers: Vector3): Vector3 {
@@ -343,6 +345,8 @@ export class Avatar {
    */
   private ankles: (Object3D | null)[] = [null, null];
   private detachedFeet: boolean[] = [false, false];
+  /** The tip of the toes in each foot's own frame (the foot's farthest skinned point), to turn the toes forward. */
+  private toeTips: (Vector3 | null)[] = [null, null];
   /** The foot's turn relative to the shin in the rest pose: lying down, a detached foot keeps this angle at the ankle. */
   private ankleTurn: (Quaternion | null)[] = [null, null];
   private rest = { hipY: 0.95, ankleY: 0.08, footX: 0.1, thigh: 0.45, shin: 0.45, upperArm: 0.28, foreArm: 0.26 };
@@ -427,6 +431,7 @@ export class Avatar {
     this.normalise(height);
     this.innerAt.copy(this.inner.position);
     this.measureStride();
+    this.measureToes();
     this.mixer = new AnimationMixer(inst);
     this.clips = model.clips;
     this.mixer.addEventListener("finished", () => this.clipFinished());
@@ -482,6 +487,49 @@ export class Avatar {
       this.rest.upperArm = shoulder.distanceTo(elbow);
       this.rest.foreArm = elbow.distanceTo(wrist);
     }
+  }
+
+  /** Where the toes end, per foot (see toeTips); in the rest pose. */
+  private measureToes(): void {
+    measure(this.inner);
+    for (const s of [0, 1] as Side[]) {
+      const foot = this.rig.foot[s];
+      if (!foot) continue;
+      const ankle = foot.getWorldPosition(new Vector3());
+      let tip: Vector3 | null = null;
+      let far = 0;
+      const v = new Vector3();
+      this.inner.traverse((o) => {
+        const m = o as SkinnedMesh;
+        if (!m.isSkinnedMesh) return;
+        const { skinIndex, skinWeight, position } = m.geometry.attributes;
+        const at = m.skeleton.bones.indexOf(foot);
+        if (at < 0 || !skinIndex || !skinWeight) return;
+        for (let i = 0; i < position.count; i++) {
+          let main = 0;
+          for (let k = 1; k < 4; k++) if (skinWeight.getComponent(i, k) > skinWeight.getComponent(i, main)) main = k;
+          if (skinIndex.getComponent(i, main) !== at) continue;
+          m.getVertexPosition(i, v);
+          m.localToWorld(v);
+          const d = Math.hypot(v.x - ankle.x, v.z - ankle.z);
+          if (d > far) [far, tip] = [d, v.clone()];
+        }
+      });
+      if (tip) this.toeTips[s] = foot.worldToLocal(tip);
+    }
+  }
+
+  /** Turn a foot about the vertical so its toes point `yaw` (radians, + = to the person's left) from straight ahead. */
+  private toesTo(s: Side, yaw: number, w: number): void {
+    const foot = this.rig.foot[s];
+    const tip = this.toeTips[s];
+    if (!foot || !tip || w <= 0.001) return;
+    const a = this.body.worldToLocal(foot.getWorldPosition(new Vector3()));
+    const b = this.body.worldToLocal(foot.localToWorld(tip.clone()));
+    const now = Math.atan2(b.x - a.x, b.z - a.z);
+    let d = yaw - now;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    turn(foot, UP, d * w, this.body);
   }
 
   /** Find the stride of the rest pose (see strideYaw); call after normalise, in the rest pose. */
@@ -838,6 +886,8 @@ export class Avatar {
         foot.updateMatrixWorld(true);
       }
       if (pose !== "sleep") holdWorld(foot, feetWorld[s]!, w);
+      // sitting or squatting the toes point ahead, a little out (the idle clip's stance turned the left foot 58° out)
+      if (sit || pose === "squat") this.toesTo(s, sign * TOE_OUT, w);
       else if (this.detachedFeet[s] && foot && r.lowerLeg[s] && this.ankleTurn[s]) {
         // asleep the foot goes along with the shin (the clip's standing foot pointed into the mattress on one side)
         holdWorld(foot, r.lowerLeg[s]!.getWorldQuaternion(new Quaternion()).multiply(this.ankleTurn[s]!), w);

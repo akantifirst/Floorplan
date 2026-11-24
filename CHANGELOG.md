@@ -4,6 +4,13 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.32.1.11] – fork: animated person
+
+### Fixed
+
+- **The person no longer walks through walls to reach a spot.** Where the walk to a spot inside furniture ends was the nearest free place, wherever it was; for a bed pushed against a wall that place lay in the next room, and the last straight step to the bed went through the wall. It is now always in the spot's own room.
+- **Sitting and squatting, the toes point ahead** (10° out), instead of keeping the idle clip's stance with the left foot turned 58° out.
+
 ## [0.32.1.10] – fork: animated person
 
 ### Changed

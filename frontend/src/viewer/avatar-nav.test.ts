@@ -76,3 +76,14 @@ test("spots by state", () => {
   assert.equal(spotFor(spots, "idle", null, 3)?.id, "c");
   assert.equal(spotFor(spots, "idle", spots[1], 3)?.id, "b");
 });
+
+test("the nearest free place can be held to one room, so a spot by a wall is not reached from behind it", () => {
+  const grid = new NavGrid({ rooms: [{ points: left }, { points: right }], doors: [door], walls: [], obstacles: [[[3, 0], [4, 0], [4, 0.9], [3, 0.9]]] });
+  // a spot pushed against the shared wall, on the left side: the free cell nearest to it lies in the right room
+  const spot: Vec2 = [3.9, 0.4];
+  const any = grid.nearestFree(spot)!;
+  assert.ok(grid.center(any[0], any[1])[0] > 4, "without a filter: the right room, behind the wall");
+  const inLeft = (p: Vec2) => p[0] < 4;
+  const held = grid.nearestFree(spot, inLeft)!;
+  assert.ok(grid.center(held[0], held[1])[0] < 4, "held to the spot's room: the left one");
+});
