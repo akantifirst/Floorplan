@@ -4,6 +4,12 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.32.1.4] – fork: animated person
+
+### Changed
+
+- **The phone is held in both hands.** Both wrists go to its lower corners (two-bone arm IK), the palms lie against its back with the fingers up along it, and it faces the eyes from about 35 cm; before, only the right hand reached it and the left one hung in the air beside it.
+
 ## [0.32.1.3] – fork: animated person
 
 ### Fixed

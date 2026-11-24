@@ -218,6 +218,13 @@ function orient(bone: Bone | null, tip: Object3D | null, a: Object3D | null, b: 
 
 const LEFT = new Vector3(1, 0, 0);
 
+/** The index-to-little-finger line that gives a hand of side s the palm normal `palm` with the fingers along `fingers`. */
+function palmAcross(s: 0 | 1, palm: Vector3, fingers: Vector3): Vector3 {
+  // the palm faces -(fingers x across) on the left hand and +(fingers x across) on the right one (this rig's hands)
+  const n = palm.clone().normalize().multiplyScalar(s === 0 ? -1 : 1);
+  return n.cross(fingers.clone().normalize());
+}
+
 /** Bounds of a rigged model as it stands now (the skinned vertices, so the bone matrices first). */
 function measure(o: Object3D): Box3 {
   o.updateMatrixWorld(true);
@@ -277,7 +284,7 @@ export class Avatar {
    */
   private ankles: (Object3D | null)[] = [null, null];
   private detachedFeet: boolean[] = [false, false];
-  private rest = { hipY: 0.95, ankleY: 0.08, footX: 0.1, thigh: 0.45, shin: 0.45 };
+  private rest = { hipY: 0.95, ankleY: 0.08, footX: 0.1, thigh: 0.45, shin: 0.45, upperArm: 0.28, foreArm: 0.26 };
   private phone: Mesh;
   private own: Material[] = [];
 
@@ -388,8 +395,17 @@ export class Avatar {
         footX: Math.max(0.05, Math.abs(ankle.x)),
         thigh: hip.distanceTo(knee),
         shin: knee.distanceTo(ankle),
+        upperArm: this.rest.upperArm,
+        foreArm: this.rest.foreArm,
       };
     } else this.rest.hipY = height * 0.52;
+    const shoulder = p(r.upperArm[0]);
+    const elbow = p(r.lowerArm[0]);
+    const wrist = p(r.hand[0]);
+    if (shoulder && elbow && wrist) {
+      this.rest.upperArm = shoulder.distanceTo(elbow);
+      this.rest.foreArm = elbow.distanceTo(wrist);
+    }
   }
 
   // ---------------------------------------------------------------- clips
@@ -711,9 +727,13 @@ export class Avatar {
         case "phone": {
           // both hands hold the phone in front of the chest, the right thumb scrolls now and then
           const scroll = s === 1 ? 0.06 * Math.max(0, Math.sin(t * 1.7)) ** 8 : 0;
-          // the phone some 35 cm from the eyes, below them: the forearms reach forward, not up to the face
-          aim(up, low, v3(sign * 0.1, -0.9, 0.42), body, w);
-          aim(low, hand, v3(-sign * 0.26, 0.15 + scroll, 1), body, w);
+          // both hands behind the phone, at its sides, the palms towards the face and the fingers up along its back;
+          // the phone some 35 cm from the eyes and below them
+          const at = this.phoneAt();
+          // the phone faces the eyes (tipped back about 50°): the wrists under its lower corners, the fingers up its back
+          const along = v3(-sign * 0.15, 0.75, 0.64);
+          this.armTo(s, v3(at.x + sign * 0.05, at.y - 0.06 + scroll * 0.15, at.z - 0.035), v3(sign * 0.6, -1, -0.3), w);
+          orient(hand, r.middle[s], r.index[s], r.pinky[s], along, palmAcross(s, v3(-sign * 0.25, 0.64, -0.76), along), body, w);
           break;
         }
         case "sleep": {
@@ -745,16 +765,42 @@ export class Avatar {
       }
     }
 
-    // ---- the phone, between the hands and turned to the face
-    if (pose === "phone" && w > 0.6 && r.hand[0] && r.hand[1]) {
-      const a = body.worldToLocal(r.hand[0].getWorldPosition(_a));
-      const b = body.worldToLocal(r.hand[1].getWorldPosition(_b));
-      this.phone.position.copy(a).add(b).multiplyScalar(0.5);
-      this.phone.position.y += 0.05;
-      this.phone.position.z += 0.02;
+    // ---- the phone, in both hands and turned to the face
+    if (pose === "phone" && w > 0.6) {
+      this.phone.position.copy(this.phoneAt());
       this.phone.visible = true;
       if (r.head) this.phone.lookAt(r.head.getWorldPosition(_d));
     }
+  }
+
+  /** Where the phone is held (body frame): in front of the chest, scaled with the person. */
+  private phoneAt(): Vector3 {
+    // the body frame keeps the standing torso (sitting lowers the frame itself), so this is chest height in any pose
+    const k = this.rest.hipY / 0.92;
+    return new Vector3(0, 1.3 * k, 0.3 * k);
+  }
+
+  /** Two-bone arm: the wrist to a point (body frame), the elbow bending towards `pole`. */
+  private armTo(s: Side, wrist: Vector3, pole: Vector3, w: number): void {
+    const r = this.rig;
+    const upper = r.upperArm[s];
+    const lower = r.lowerArm[s];
+    const hand = r.hand[s];
+    if (!upper || !lower || !hand) return;
+    const shoulder = this.body.worldToLocal(upper.getWorldPosition(new Vector3()));
+    const { upperArm: a, foreArm: b } = this.rest;
+    const d = wrist.clone().sub(shoulder);
+    const dist = Math.max(0.05, Math.min(a + b - 0.002, d.length()));
+    const u = d.normalize();
+    const x = (a * a - b * b + dist * dist) / (2 * dist);
+    const h = Math.sqrt(Math.max(0, a * a - x * x));
+    const k = pole.clone().sub(u.clone().multiplyScalar(pole.dot(u)));
+    if (k.lengthSq() < 1e-8) k.set(0, -1, 0);
+    k.normalize();
+    const elbow = shoulder.clone().add(u.clone().multiplyScalar(x)).add(k.multiplyScalar(h));
+    const end = shoulder.clone().add(u.clone().multiplyScalar(dist));
+    aim(upper, lower, elbow.clone().sub(shoulder), this.body, w);
+    aim(lower, hand, end.sub(elbow), this.body, w);
   }
 
   /** Two-bone leg: the ankle to a point (body frame), the knee bending towards `pole`. */
