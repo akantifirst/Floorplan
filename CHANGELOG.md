@@ -4,6 +4,12 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.32.1.12] – fork: animated person
+
+### Changed
+
+- **Relaxed in an armchair.** The "sit" pose is now half lying: slid forward so the knees rest on the front of the seat, the pelvis and back tipped back about 55° onto the backrest, the head up to look ahead, the legs stretched out with the feet on the floor beyond the chair, the hands on the thighs. Before, the person sat upright in the middle of the seat, away from the backrest, and the shins went through the front of the cushion. An armchair is now approached from the front (a desk chair still from behind, it is pulled out).
+
 ## [0.32.1.11] – fork: animated person
 
 ### Fixed

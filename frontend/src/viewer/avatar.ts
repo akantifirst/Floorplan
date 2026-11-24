@@ -228,6 +228,13 @@ const PHONE_AT = { y: 0.06, z: 0.26 };
 /** How far in front of the palms the phone lies, towards the face (m). */
 const PHONE_GAP = 0.045;
 const UP = new Vector3(0, 1, 0);
+/**
+ * An armchair ("sit"), half lying: the hips this far above the seat and back from the spot (m; negative: slid forward,
+ * so the knees rest on the front of a deep seat), the pelvis, spine and chest leant back onto the backrest (about 55°)
+ * and the neck bent forward again to look ahead (radians), the feet stretched out this far ahead of the spot and this
+ * much wider than standing.
+ */
+const LOUNGE = { hips: 0.15, back: -0.12, pelvis: 0.8, recline: 0.2, chest: 0.1, neck: 0.9, feet: 0.92, feetApart: 1.5 };
 /** How far the toes turn out when the pose sets the feet (radians). */
 const TOE_OUT = (10 * Math.PI) / 180;
 
@@ -829,7 +836,12 @@ export class Avatar {
       const hipsTo = rest.hipY + (spot.seat + 0.12 + SIDE_LIFT * (rest.hipY / 0.92) * onSide - rest.hipY) * w;
       body.rotation.set(th, roll, 0);
       body.position.set(0, hipsTo - rest.hipY * Math.cos(th), -rest.hipY * Math.sin(th));
-    } else if (pose === "sit" || pose === "sit_type" || pose === "phone") {
+    } else if (pose === "sit") {
+      // an armchair: back into it, the hips by the backrest
+      const k = rest.hipY / 0.92;
+      body.position.y = (spot.seat + LOUNGE.hips * k - rest.hipY) * w;
+      body.position.z = -LOUNGE.back * k * w;
+    } else if (pose === "sit_type" || pose === "phone") {
       body.position.y = (spot.seat + 0.1 - rest.hipY) * w;
       body.position.z = -0.04 * w;
     } else if (pose === "squat") {
@@ -849,7 +861,13 @@ export class Avatar {
 
     // ---- spine and head
     if (pose === "sit_type" || pose === "stand_type") turn(r.chest ?? r.spine, LEFT, 0.12 * w, body);
-    if (pose === "sit") turn(r.spine, LEFT, -0.12 * w, body);
+    if (pose === "sit") {
+      // leaning back against the backrest (the pelvis tips back with the trunk), the head up again to look ahead
+      turn(r.hips, LEFT, -LOUNGE.pelvis * w, body);
+      turn(r.spine, LEFT, -LOUNGE.recline * w, body);
+      if (r.chest !== r.spine) turn(r.chest, LEFT, -LOUNGE.chest * w, body);
+      turn(r.neck, LEFT, LOUNGE.neck * w, body);
+    }
     if (pose === "phone") {
       // leaning forward, the elbows on the knees; the head looks down at the phone in the hands
       turn(r.spine, LEFT, PHONE_LEAN.spine * w, body);
@@ -864,9 +882,15 @@ export class Avatar {
     for (const s of [0, 1] as Side[]) {
       const sign = SIGN[s];
       if (sit) {
-        // thighs forward, shins down to the floor in front of the seat
         const floorY = -body.position.y;
-        this.legTo(s, v3(sign * rest.footX * 1.15, rest.ankleY + floorY, (rest.thigh * 0.95 + 0.06) * w), v3(0, 0.3, 1), w);
+        if (pose === "sit") {
+          // an armchair: the legs stretched out, the feet on the floor well beyond the front of the seat, a little apart
+          const k = rest.hipY / 0.92;
+          this.legTo(s, v3(sign * rest.footX * LOUNGE.feetApart, rest.ankleY + floorY, (LOUNGE.feet * k - body.position.z) * w), v3(sign * 0.2, 1, 0.3), w);
+        } else {
+          // thighs forward, shins down to the floor in front of the seat
+          this.legTo(s, v3(sign * rest.footX * 1.15, rest.ankleY + floorY, (rest.thigh * 0.95 + 0.06) * w), v3(0, 0.3, 1), w);
+        }
       } else if (pose === "squat") {
         this.legTo(s, v3(sign * rest.footX * (1 + 0.4 * w), rest.ankleY - body.position.y, -body.position.z), v3(sign * 0.25, 0.2, 1), w);
       } else if (pose === "sleep") {
@@ -926,6 +950,12 @@ export class Avatar {
           const wrist = at.clone().addScaledVector(along, -0.06 + scroll * 0.15).addScaledVector(facing, -0.035).setX(at.x + sign * 0.05);
           if (elbow) aim(low, hand, wrist.sub(elbow), body, w);
           orient(hand, r.middle[s], r.index[s], r.pinky[s], along.clone().setX(-sign * 0.15), palmAcross(s, facing.clone().setX(-sign * 0.25), along), body, w);
+          break;
+        }
+        case "sit": {
+          // an armchair: the arms relaxed, the hands lying on the thighs
+          aim(up, low, v3(sign * 0.25, -0.85, 0.3), body, w);
+          aim(low, hand, v3(-sign * 0.05, -0.35, 1), body, w);
           break;
         }
         case "sleep": {

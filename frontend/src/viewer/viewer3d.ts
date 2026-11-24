@@ -3214,7 +3214,9 @@ export class NextFloorViewer {
       const floor = this.floorMap.get(s.floorId)?.floor;
       const room = floor?.rooms.find((r) => r.points.length >= 3 && pointInPolygon(s.pos, r.points));
       const inRoom = (p: Vec2) => !room || pointInPolygon(p, room.points);
-      const back: Vec2 = [-Math.sin(s.heading), -Math.cos(s.heading)];
+      // an armchair is sat down into from the front; a desk chair is pulled out, so from behind
+      const away = s.pose === "sit" ? 1 : -1;
+      const back: Vec2 = [away * Math.sin(s.heading), away * Math.cos(s.heading)];
       let stand: Vec2 | null = null;
       for (let d = 0.1; d <= 1.2 && !stand; d += 0.05) {
         const p: Vec2 = [s.pos[0] + back[0] * d, s.pos[1] + back[1] * d];
