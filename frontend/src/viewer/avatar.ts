@@ -13,6 +13,7 @@ import {
   Group,
   LoopOnce,
   LoopRepeat,
+  Matrix4,
   Mesh,
   MeshStandardMaterial,
   Object3D,
@@ -85,6 +86,10 @@ interface Rig {
   upperArm: (Bone | null)[];
   lowerArm: (Bone | null)[];
   hand: (Bone | null)[];
+  /** Second joints of the middle, index and little fingers: which way the hand points and how it is rolled. */
+  middle: (Bone | null)[];
+  index: (Bone | null)[];
+  pinky: (Bone | null)[];
   upperLeg: (Bone | null)[];
   lowerLeg: (Bone | null)[];
   foot: (Bone | null)[];
@@ -118,6 +123,9 @@ function findRig(root: Object3D): Rig {
     upperArm: sided("upperarm", "arm"),
     lowerArm: sided("lowerarm", "forearm"),
     hand: sided("wrist", "hand"),
+    middle: sided("middle2", "handmiddle2"),
+    index: sided("index2", "handindex2"),
+    pinky: sided("pinky2", "handpinky2"),
     upperLeg: sided("upperleg", "thigh", "upleg"),
     lowerLeg: sided("lowerleg", "shin", "calf", "leg"),
     foot: sided("foot", "ankle"),
@@ -172,6 +180,42 @@ function holdWorld(bone: Bone | null, world: Quaternion, w: number): void {
   bone.updateMatrixWorld(true);
 }
 
+const _e = new Vector3();
+const _f = new Vector3();
+const _m1 = new Matrix4();
+const _m2 = new Matrix4();
+
+/**
+ * Turn a bone so that `tip` (a joint it carries) lies along `dir` and the line from `a` to `b` (index to little finger:
+ * the roll of the hand) along `across`, both given in the frame of `ref`, by the share w. With `keepAim` the bone keeps
+ * the way it points and only rolls about it (the forearm turning the palm down).
+ */
+function orient(bone: Bone | null, tip: Object3D | null, a: Object3D | null, b: Object3D | null, dir: Vector3 | null, across: Vector3, ref: Object3D, w: number): void {
+  if (!bone || !tip || !a || !b || !bone.parent || w <= 0.001) return;
+  ref.getWorldQuaternion(_qr);
+  const f0 = tip.getWorldPosition(_a).sub(bone.getWorldPosition(_b));
+  if (f0.lengthSq() < 1e-12) return;
+  f0.normalize();
+  const a0 = b.getWorldPosition(_c).sub(a.getWorldPosition(_d));
+  a0.addScaledVector(f0, -a0.dot(f0));
+  if (a0.lengthSq() < 1e-12) return;
+  a0.normalize();
+  const f1 = dir ? _e.copy(dir).applyQuaternion(_qr).normalize() : _e.copy(f0);
+  const a1 = _f.copy(across).applyQuaternion(_qr);
+  a1.addScaledVector(f1, -a1.dot(f1));
+  if (a1.lengthSq() < 1e-12) return;
+  a1.normalize();
+  _m1.makeBasis(f0, a0, f0.clone().cross(a0));
+  _m2.makeBasis(f1, a1, f1.clone().cross(a1));
+  _q.setFromRotationMatrix(_m2.multiply(_m1.transpose()));
+  bone.getWorldQuaternion(_qb);
+  _q.multiply(_qb);
+  bone.parent.getWorldQuaternion(_qp);
+  _qp.invert().multiply(_q);
+  bone.quaternion.slerp(_qp, Math.min(1, w));
+  bone.updateMatrixWorld(true);
+}
+
 const LEFT = new Vector3(1, 0, 0);
 
 /** Bounds of a rigged model as it stands now (the skinned vertices, so the bone matrices first). */
@@ -219,11 +263,13 @@ export class Avatar {
   private base: AnimationAction | null = null;
   private rig: Rig;
   /**
-   * Every bone with its turn in the model's rest pose. The clips do not key every bone (this one has no track for the
-   * spine or the neck), and the mixer leaves an unkeyed bone as it was, so the pose's turns would add up frame by frame
-   * and spin the body: each frame starts from the rest pose instead.
+   * Every bone as the clips left it in the last frame, before the pose went on top. The clips do not key every bone (this
+   * one has no track for the spine or the neck) and the mixer only writes a value that changed since its last frame, so
+   * a bone it does not write would keep the pose's turn and the turns would add up frame by frame (the body spins).
+   * Each frame first puts the bones back as the clips had them; resetting them to the rest pose instead would make the
+   * torso snap back to it whenever a keyed value holds still for a frame.
    */
-  private restTurns: [Bone, Quaternion, Vector3][] = [];
+  private clipPose: [Bone, Quaternion, Vector3][] = [];
   /**
    * The ankle at the end of each shin, carried by the shin. In IK rigs (Quaternius and the like) the foot is not a child of
    * the shin but of the root, so it stays where the clip put it when the body sits down: the shin's skin would stretch to
@@ -285,7 +331,7 @@ export class Avatar {
     this.group.add(this.body);
     this.rig = findRig(inst);
     inst.traverse((o) => {
-      if ((o as Bone).isBone) this.restTurns.push([o as Bone, (o as Bone).quaternion.clone(), (o as Bone).position.clone()]);
+      if ((o as Bone).isBone) this.clipPose.push([o as Bone, (o as Bone).quaternion.clone(), (o as Bone).position.clone()]);
     });
     inst.updateMatrixWorld(true);
     for (const s of [0, 1] as Side[]) {
@@ -548,11 +594,15 @@ export class Avatar {
         break;
       }
     }
-    for (const [bone, q, at] of this.restTurns) {
+    for (const [bone, q, at] of this.clipPose) {
       bone.quaternion.copy(q);
       bone.position.copy(at);
     }
     this.mixer.update(dt);
+    for (const [bone, q, at] of this.clipPose) {
+      q.copy(bone.quaternion);
+      at.copy(bone.position);
+    }
     this.place();
     this.pose(this.spot, this.spot ? smooth(this.w) : 0);
     return moving;
@@ -610,9 +660,9 @@ export class Avatar {
     if (pose === "sit_type" || pose === "stand_type") turn(r.chest ?? r.spine, LEFT, 0.12 * w, body);
     if (pose === "sit") turn(r.spine, LEFT, -0.12 * w, body);
     if (pose === "phone") {
-      turn(r.spine, LEFT, 0.15 * w, body);
-      turn(r.neck, LEFT, 0.3 * w, body);
-      turn(r.head, LEFT, 0.25 * w, body);
+      // the back straight, only the head bowed to the phone (leaning in brought the face right onto it)
+      turn(r.neck, LEFT, 0.25 * w, body);
+      turn(r.head, LEFT, 0.2 * w, body);
     }
     if (pose === "squat") turn(r.spine, LEFT, 0.45 * squat, body);
     if (pose === "interact") turn(r.chest ?? r.spine, LEFT, 0.1 * w, body);
@@ -649,16 +699,21 @@ export class Avatar {
       switch (pose) {
         case "sit_type":
         case "stand_type": {
-          // hands on the keyboard, the fingers tapping
+          // palms flat over the keyboard; one paw and then the other lifts a couple of centimetres, like a cat typing
+          const tap = Math.max(0, Math.sin(t * 6.5 + s * Math.PI)) ** 2;
+          const flat = v3(sign, 0, 0);
           aim(up, low, v3(sign * 0.14, -0.8, 0.55), body, w);
-          aim(low, hand, v3(-sign * 0.22, 0.04 + 0.05 * Math.sin(t * 11 + s * 1.9), 1), body, w);
+          aim(low, hand, v3(-sign * 0.22, 0.02 + 0.03 * tap, 1), body, w);
+          orient(low, hand, r.index[s], r.pinky[s], null, flat, body, w);
+          orient(hand, r.middle[s], r.index[s], r.pinky[s], v3(-sign * 0.08, -0.22 + 0.1 * tap, 1), flat, body, w);
           break;
         }
         case "phone": {
           // both hands hold the phone in front of the chest, the right thumb scrolls now and then
           const scroll = s === 1 ? 0.06 * Math.max(0, Math.sin(t * 1.7)) ** 8 : 0;
-          aim(up, low, v3(sign * 0.12, -0.9, 0.3), body, w);
-          aim(low, hand, v3(-sign * 0.42, 0.62 + scroll, 0.62), body, w);
+          // the phone some 35 cm from the eyes, below them: the forearms reach forward, not up to the face
+          aim(up, low, v3(sign * 0.1, -0.9, 0.42), body, w);
+          aim(low, hand, v3(-sign * 0.26, 0.15 + scroll, 1), body, w);
           break;
         }
         case "sleep": {

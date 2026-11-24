@@ -4,6 +4,17 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.32.1.3] – fork: animated person
+
+### Fixed
+
+- **Walking is smooth again.** 0.32.1.2 put every bone back into the rest pose before each frame, but the animation mixer only writes a value that changed since its last frame, so the torso snapped back to the rest pose and returned now and then while walking. Each frame now starts from the bones as the clips left them in the last frame.
+
+### Changed
+
+- **Typing looks like typing:** the palms lie flat over the keyboard (the forearm turns the hand palm-down) and one hand and then the other lifts a couple of centimetres.
+- **The phone is held about 35 cm from the eyes,** below them, with the back straight and only the head bowed; before, the person leaned in and held it right at the face.
+
 ## [0.32.1.2] – fork: animated person
 
 ### Fixed
