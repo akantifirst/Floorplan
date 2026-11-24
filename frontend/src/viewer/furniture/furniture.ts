@@ -195,7 +195,7 @@ function drawBuiltIn(b: Builder, f: Furniture, w: number, d: number, h: number, 
         return "yes";
       }
       // a pet is drawn by the view's own layer, where it walks around
-      if (item.pet) return "no";
+      if (item.pet || item.avatar || item.avatar_spot) return "no";
       packModel(b, item, w, d, h, base, null, null, f.variant ?? null);
       // items on furniture, walls or ceilings cast no shadow on the floor
       return base > 0.05 ? "no" : "yes";

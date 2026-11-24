@@ -135,6 +135,23 @@ RECIPE_SCHEMA = vol.Schema(
     }
 )
 
+# the poses an avatar takes at its spots (frontend/src/viewer/avatar.ts)
+AVATAR_POSES = [
+    "stand",
+    "idle",
+    "stand_type",
+    "sit",
+    "sit_type",
+    "phone",
+    "sleep",
+    "squat",
+    "box",
+    "reach",
+    "interact",
+    "wave",
+    "away",
+]
+
 ITEM_SCHEMA = vol.Schema(
     {
         vol.Required("id"): _ID,
@@ -159,6 +176,20 @@ ITEM_SCHEMA = vol.Schema(
         vol.Optional("cover_rest"): vol.All(vol.Coerce(float), vol.Range(min=0, max=1)),
         # an animal that roams its room in 3D
         vol.Optional("pet", default=False): bool,
+        # an animated person (its mesh is a rigged model with clips), moved by an activity sensor
+        vol.Optional("avatar"): vol.Schema(
+            {
+                vol.Optional("entity"): vol.All(str, vol.Match(r"^[a-z_]+\.[a-z0-9_]+$")),
+                vol.Optional("speed"): vol.All(vol.Coerce(float), vol.Range(min=0.3, max=3)),
+            }
+        ),
+        # a spot of the avatar: the sensor states that send it here and the pose it takes there (not drawn in 3D)
+        vol.Optional("avatar_spot"): vol.Schema(
+            {
+                vol.Required("states"): vol.All(str, vol.Length(min=1, max=255)),
+                vol.Required("pose"): vol.In(AVATAR_POSES),
+            }
+        ),
         # the household: a waste bin (pickup day), a mailbox (post) or a plant (soil moisture), shown from a sensor
         vol.Optional("household"): vol.In(["bin", "mail", "plant"]),
         # light switches and sockets: how many buttons (gangs) the item has, each linked to its own entity

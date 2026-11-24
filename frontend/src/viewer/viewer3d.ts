@@ -10,6 +10,8 @@ export type { DeviceMarker, FloorStack, LampModel, LiveAnchorCallback, LiveScree
 import { packModel, placement } from "./furniture/packs.ts";
 import { Builder } from "./furniture/builder.ts";
 import { advancePet, seededRandom, type PetMotion, type PetRoom } from "./pets.ts";
+import { Avatar, AVATAR_POSES, loadAvatarModel, type AvatarPose, type AvatarSpot } from "./avatar.ts";
+import { NavGrid, navFromFloor, spotStates } from "./avatar-nav.ts";
 import { isLowEnd } from "../hardware.ts";
 import { QualityGovernor } from "./quality-governor.ts";
 import {
@@ -302,6 +304,13 @@ export class NextFloorViewer {
   /** Pets roaming their rooms: their motion, the room they keep to, and the group that carries their model. */
   private pets = new Map<string, { motion: PetMotion; room: PetRoom; random: () => number; group: Group; floorId: string }>();
   private petMat: MeshBasicMaterial | null = null;
+  /** Animated people (pack items with "avatar"): furniture id -> the avatar once its model has loaded. */
+  private avatars = new Map<string, { avatar: Avatar | null; model: string; height: number }>();
+  /** The states of their activity sensors (furniture id -> state). */
+  private avatarStates = new Map<string, string | null>();
+  private avatarSpots: AvatarSpot[] = [];
+  private avatarNavs = new Map<string, NavGrid | null>();
+  private avatarLast = 0;
   private petTimer: ReturnType<typeof setTimeout> | undefined;
   private robotGeo: BufferGeometry | null = null;
   /** The pad each robot has driven, by robot id: the ribbon of its own map's trail. */
@@ -1369,6 +1378,8 @@ export class NextFloorViewer {
     this.renderer?.domElement?.removeEventListener?.("pointerup", this.onRightUp);
     this.renderer?.domElement?.removeEventListener?.("contextmenu", this.onContext);
     clearTimeout(this.petTimer);
+    for (const a of this.avatars.values()) a.avatar?.dispose();
+    this.avatars.clear();
     this.controls.dispose();
     this.clear();
     this.building = null;
@@ -1854,6 +1865,7 @@ export class NextFloorViewer {
     }
     this.floorMap = new Map(this.floors.map((f) => [f.floor.id, f]));
     this.buildPets();
+    this.buildAvatars();
     for (const fv of this.floors) this.buildFridges(fv);
     this.labelsDirty = true;
     if (this.floorId && !b.floors.some((f) => f.id === this.floorId)) this.floorId = null;
@@ -1883,7 +1895,8 @@ export class NextFloorViewer {
     for (const fv of this.floors) {
       for (const f of withVehicles(fv.floor, this.parked).furniture) {
         const item = packItem(f.type);
-        if (!item?.mesh) continue;
+        // an avatar's model is drawn and animated by its own layer
+        if (!item?.mesh || item.avatar) continue;
         const id = item.mesh;
         if (!hasMesh(f.type)) {
           if (!this.meshAsked.has(id)) {
@@ -3125,9 +3138,124 @@ export class NextFloorViewer {
     this.invalidate();
   }
 
+  // ---------------------------------------------------------------- avatars
+
+  /** The furniture an avatar walks round on a floor: what stands on the floor (not rugs, spots, pets, people). */
+  private avatarObstacles(floor: Floor): Vec2[][] {
+    // a spot to stand at inside a piece (the kitchen's floor between its counters) means its footprint is not solid
+    const standing = this.avatarSpots.filter((s) => s.floorId === floor.id && !["sit", "sit_type", "phone", "sleep"].includes(s.pose));
+    return floor.furniture
+      .filter((o) => {
+        const it = packItem(o.type);
+        if (it?.pet || it?.avatar || it?.avatar_spot || o.type === "rug" || o.h < 0.1) return false;
+        if (it?.mount === "wall" || it?.mount === "ceiling") return false;
+        return mountBase(floor, o) < 0.5;
+      })
+      .map((o) => furnitureFootprint(o))
+      .filter((fp) => !standing.some((s) => pointInPolygon(s.pos, fp)));
+  }
+
+  private avatarNav(floorId: string): NavGrid | null {
+    if (!this.avatarNavs.has(floorId)) {
+      const fv = this.floorMap.get(floorId);
+      this.avatarNavs.set(floorId, fv ? new NavGrid(navFromFloor(fv.floor, this.avatarObstacles(fv.floor))) : null);
+    }
+    return this.avatarNavs.get(floorId) ?? null;
+  }
+
+  /** The avatars of the plan and the spots they walk to; their models load once and stay while the plan is redrawn. */
+  private buildAvatars(): void {
+    this.avatarNavs.clear();
+    const spots: AvatarSpot[] = [];
+    const seen = new Set<string>();
+    for (const fv of this.floors) {
+      for (const f of fv.floor.furniture) {
+        const item = packItem(f.type);
+        if (item?.avatar_spot) {
+          const pose = (AVATAR_POSES as readonly string[]).includes(item.avatar_spot.pose) ? (item.avatar_spot.pose as AvatarPose) : "stand";
+          const heading = (-f.rotation * Math.PI) / 180;
+          spots.push({ id: f.id, floorId: fv.floor.id, states: spotStates(item.avatar_spot.states), pose, pos: [f.x, f.z], heading, seat: f.h, base: mountBase(fv.floor, f), stand: [f.x, f.z] });
+        }
+        if (!item?.avatar) continue;
+        seen.add(f.id);
+        const model = item.mesh ?? "avatar";
+        const old = this.avatars.get(f.id);
+        if (old && old.model === model && Math.abs(old.height - f.h) < 1e-3) continue;
+        old?.avatar?.dispose();
+        const entry = { avatar: null as Avatar | null, model, height: f.h };
+        this.avatars.set(f.id, entry);
+        const floorId = fv.floor.id;
+        const at = { pos: [f.x, f.z] as Vec2, heading: (-f.rotation * Math.PI) / 180, floorId };
+        void loadAvatarModel(model).then((m) => {
+          if (!m || this.disposed || this.avatars.get(f.id) !== entry) return;
+          entry.avatar = new Avatar(m, Math.max(0.5, f.h), at, item.avatar?.speed ?? 1);
+          if (!this.meshLight) this.meshLight = addMeshLighting(this.root, this.renderer);
+          entry.avatar.setEnvironment(this.meshLight.env);
+          entry.avatar.update(this.avatarStates.get(f.id) ?? null, this.avatarSpots, (id) => this.avatarNav(id));
+          this.invalidate();
+        });
+      }
+    }
+    for (const [id, a] of this.avatars)
+      if (!seen.has(id)) {
+        a.avatar?.dispose();
+        this.avatars.delete(id);
+      }
+    this.avatarSpots = spots;
+    // where the walk to a spot ends: the spot itself, or next to the furniture it is in (behind it first: the chair is pulled out)
+    for (const s of spots) {
+      const nav = this.avatarNav(s.floorId);
+      if (!nav || nav.isFree(s.pos)) continue;
+      const back: Vec2 = [-Math.sin(s.heading), -Math.cos(s.heading)];
+      let stand: Vec2 | null = null;
+      for (let d = 0.1; d <= 1.2 && !stand; d += 0.05) {
+        const p: Vec2 = [s.pos[0] + back[0] * d, s.pos[1] + back[1] * d];
+        if (nav.isFree(p)) stand = p;
+      }
+      if (!stand) {
+        const c = nav.nearestFree(s.pos);
+        if (c) stand = nav.center(c[0], c[1]);
+      }
+      if (stand) s.stand = stand;
+    }
+    this.avatarSpots = spots;
+    for (const [id, a] of this.avatars) a.avatar?.update(this.avatarStates.get(id) ?? null, spots, (fid) => this.avatarNav(fid));
+  }
+
+  /** What the avatars do now: the states of their activity sensors (furniture id -> state). */
+  setAvatarStates(states: Map<string, string | null>): void {
+    let changed = false;
+    for (const [id, s] of states) {
+      if (this.avatarStates.get(id) === s) continue;
+      this.avatarStates.set(id, s);
+      changed = true;
+      this.avatars.get(id)?.avatar?.update(s, this.avatarSpots, (fid) => this.avatarNav(fid));
+    }
+    if (changed) this.invalidate();
+  }
+
+  /** One frame of the avatars; true while one of them moves. */
+  private stepAvatars(now: number): boolean {
+    if (!this.avatars.size) return false;
+    const dt = this.avatarLast ? (now - this.avatarLast) / 1000 : 0;
+    this.avatarLast = now;
+    let moving = false;
+    for (const a of this.avatars.values()) {
+      const av = a.avatar;
+      if (!av) continue;
+      const fv = this.floorMap.get(av.floorId);
+      if (!fv) continue;
+      if (av.group.parent !== fv.group) fv.group.add(av.group);
+      moving = av.step(dt) || moving;
+    }
+    if (!moving) this.avatarLast = 0;
+    return moving;
+  }
+
   /** Move the robots; true while one of them drives. */
   private stepRobots(now: number): boolean {
-    if (!this.robots.size && !this.pets.size) return false;
+    const avatarsMoving = this.stepAvatars(now);
+    if (!this.robots.size && !this.pets.size) return avatarsMoving;
     const dt = this.robotLast ? Math.min(0.2, (now - this.robotLast) / 1000) : 0;
     this.robotLast = now;
     let active = false;
@@ -3163,7 +3291,7 @@ export class NextFloorViewer {
       r.group.rotation.y = r.motion.heading;
     }
     if (!active) this.robotLast = 0;
-    return active;
+    return active || avatarsMoving;
   }
 
   /** The current view (a copy), to come back to it later with flyTo. */

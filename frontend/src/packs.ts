@@ -86,6 +86,13 @@ export interface PackItem {
   vehicle?: boolean;
   /** An animal that roams its room in 3D (drawn apart from the furniture and walked around by the view). */
   pet?: boolean;
+  /**
+   * An animated person (the `mesh` is a rigged model with its own clips): an activity sensor (`entity`, or the entity
+   * linked to the placed item) says what they do, and they walk to the spot item that lists that state (#avatar).
+   */
+  avatar?: { entity?: string; speed?: number };
+  /** A spot of the avatar: not drawn in 3D; the states of the activity sensor that send it here and the pose it takes. */
+  avatar_spot?: { states: string; pose: string };
   /** The household: a waste bin (pickup day), a mailbox (post) or a plant (soil moisture), shown from a sensor of the item. */
   household?: "bin" | "mail" | "plant";
   /** Light switches and sockets: how many buttons (gangs) it has, each linked to its own entity. */

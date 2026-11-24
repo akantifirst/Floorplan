@@ -971,6 +971,16 @@ export class NfView3d extends LitElement {
         petRooms.set(f.id, robotRoom(hass, floor.rooms.filter((r) => r.points.length >= 3), null, f.room_sensor)?.id ?? null);
       }
     if (petRooms.size) v.setPetRooms(petRooms);
+    // animated people: their activity sensor (the item's own link, else the one the pack names) says what they do
+    const avatarStates = new Map<string, string | null>();
+    for (const floor of b.floors)
+      for (const f of floor.furniture) {
+        const avatar = packItem(f.type)?.avatar;
+        if (!avatar) continue;
+        const entity = f.entity && f.entity !== "none" ? f.entity : avatar.entity;
+        avatarStates.set(f.id, entity ? (hass.states[entity]?.state ?? null) : null);
+      }
+    if (avatarStates.size) v.setAvatarStates(avatarStates);
     // roof windows: sash and blind follow their contact and cover like windows do
     v.setRoofWindows(roofWindowStates(hass, b));
     v.setParked(parkedVehicles(hass, b));

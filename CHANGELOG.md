@@ -4,6 +4,13 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.32.1.1] – fork: animated person
+
+### Added
+
+- **An animated person who lives in the flat.** A pack item with `"avatar": {"entity": "sensor.…"}` and a rigged model as its `mesh` (a `.glb` with its own clips, e.g. Quaternius' CC0 characters) walks smoothly through the doors to the spot that matches the state of its activity sensor and settles into that spot's pose: sitting and typing at the desk, standing at the standing desk, working at the counter, reaching into the shelf, looking at the phone on the toilet, sleeping in bed, squats, boxing, idling in an armchair. Spots are pack items with `"avatar_spot": {"states": "desk_sit_69,desk_sit_80", "pose": "sit_type"}`; they are not drawn in 3D, their height is the seat height. A state without a spot (`away`) sends the person to the spot with the pose `away` (the front door) and hides them; several spots for one state are visited in turn.
+
+
 ## [0.32.1]
 
 ### Fixed
