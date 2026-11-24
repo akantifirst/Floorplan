@@ -4,6 +4,12 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.32.1.5] – fork: animated person
+
+### Fixed
+
+- **The person follows the activity sensor at once.** The sensor named by the pack (`"avatar": {"entity": …}`) was not among the entities the 3D view watches, so a new state only reached the person when some other entity of the plan happened to change: the person stayed at the desk while the sensor already said kitchen, and the other way round.
+
 ## [0.32.1.4] – fork: animated person
 
 ### Changed

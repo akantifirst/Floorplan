@@ -1378,8 +1378,8 @@ export class NextFloorViewer {
     this.renderer?.domElement?.removeEventListener?.("pointerup", this.onRightUp);
     this.renderer?.domElement?.removeEventListener?.("contextmenu", this.onContext);
     clearTimeout(this.petTimer);
-    for (const a of this.avatars.values()) a.avatar?.dispose();
-    this.avatars.clear();
+    for (const a of this.avatars?.values() ?? []) a.avatar?.dispose();
+    this.avatars?.clear();
     this.controls.dispose();
     this.clear();
     this.building = null;

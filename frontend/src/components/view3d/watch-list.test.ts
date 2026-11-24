@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { box, entity, floorWith, hassOf } from "../../entities/fixtures.ts";
 import type { Building, Furniture } from "../../model.ts";
+import { setPacks } from "../../packs.ts";
 import { watchedEntities, type WatchInputs } from "./watch-list.ts";
 
 const tv: Furniture = { id: "tv1", type: "tv_board", x: 1, z: 1, rotation: 0, w: 1, d: 0.4, h: 0.5, variant: null, state_entity: "binary_sensor.state", door_left: "binary_sensor.left", soc: "sensor.soc", temp_entity: "sensor.fridge_temp", temp_entity2: "sensor.freezer_temp" };
@@ -50,4 +51,25 @@ test("a robot's position tracker is watched, so every coordinate change redraws 
   assert.equal(watchedEntities(withRobot(tracker)).includes("device_tracker.roomba"), true);
   // without a robot in the plan nothing of the sort is watched
   assert.equal(watchedEntities({ ...base, hass: tracker }).includes("device_tracker.roomba"), false);
+});
+
+test("an animated person's activity sensor named by its pack is watched, so every new state moves the person", () => {
+  setPacks([
+    {
+      id: "test.people",
+      name: "People",
+      publisher: "test",
+      items: [{ id: "me", name: { en: "Me" }, size: [0.5, 0.35, 1.8], avatar: { entity: "sensor.my_pose" }, parts: [{ shape: "box", pos: [0, 0.5, 0], size: [1, 1, 1], color: "#ffffff" }] }],
+    },
+  ] as never);
+  const me = { ...tv, id: "me1", type: "pack:test.people:me", state_entity: null, door_left: null, soc: null, temp_entity: null, temp_entity2: null } as Furniture;
+  const b = building();
+  b.floors[0]!.furniture = [me];
+  assert.ok(watchedEntities(inputs({ building: b })).includes("sensor.my_pose"));
+  // the piece's own link wins over the pack's sensor
+  b.floors[0]!.furniture = [{ ...me, entity: "sensor.other_pose" } as Furniture];
+  const ids = watchedEntities(inputs({ building: b }));
+  assert.ok(ids.includes("sensor.other_pose"));
+  assert.equal(ids.includes("sensor.my_pose"), false);
+  setPacks([]);
 });

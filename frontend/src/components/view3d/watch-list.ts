@@ -10,6 +10,7 @@ import { parkingEntities } from "../../parking.ts";
 import { pluginWatched } from "../../plugins/registry.ts";
 import type { HomeAssistant } from "../../types.ts";
 import { mapCamera } from "../../live/vacuum-map.ts";
+import { packItem } from "../../packs.ts";
 import { weatherEntity } from "../../weather.ts";
 
 export interface WatchInputs {
@@ -45,6 +46,13 @@ function furnitureIds(inputs: WatchInputs): MaybeId[] {
     ...pieces.filter((m) => m.type === "washer" || m.type === "dryer" || m.type === "dishwasher").flatMap((m) => deviceSiblings(hass, furnitureLinks.get(m.id)?.entity ?? furnitureLinks.get(m.id)?.power).filter((id) => id.startsWith("sensor."))),
     ...pieces.flatMap((m) => [m.door_left, m.door_right, m.soc, m.status, m.charge, m.export, m.temp_entity, m.temp_entity2, ...(m.temps ?? []).map((x) => x.entity)]),
     ...pieces.filter((m) => m.type === "robot_vacuum").map((m) => robotRoomSensor(hass, furnitureLinks.get(m.id)?.entity ?? null, m.room_sensor)),
+    // an animated person's activity sensor: the item's own link, else the one its pack names (not a link of the piece,
+    // so nothing else would wake the view when it changes and the person would stay put until some other entity changed)
+    ...pieces.map((m) => {
+      const avatar = packItem(m.type)?.avatar;
+      if (!avatar) return null;
+      return m.entity && m.entity !== "none" ? m.entity : (avatar.entity ?? null);
+    }),
     // the robot's own map (a map camera, or a tracker with map coordinates): the view follows every change of its position (#210)
     ...(pieces.some((m) => m.type === "robot_vacuum") ? [mapCamera(hass)] : []),
     ...pieces.flatMap((m) => (m.pictures ?? []).flatMap((rule) => [rule.entity, ...(rule.image.startsWith("camera:") ? [rule.image.slice("camera:".length)] : [])])),
