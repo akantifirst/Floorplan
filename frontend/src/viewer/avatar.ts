@@ -217,6 +217,16 @@ function orient(bone: Bone | null, tip: Object3D | null, a: Object3D | null, b: 
 }
 
 const LEFT = new Vector3(1, 0, 0);
+/** Lying on the back: the hand's fingers (body frame, before the sign of the side), see the sleep pose. */
+const BACK_HAND_DIR = [0.12, -1, -0.08] as const;
+/** On the toilet with the phone: how far it leans (radians, per bone), where the elbows rest and the phone is held. */
+const PHONE_LEAN = { spine: 0.8, chest: 0.3, neck: -0.45, head: 0.25 };
+/** The elbow, from the knee (body frame, m): on top of the thigh, a little behind the knee. */
+const PHONE_ELBOW = new Vector3(0, 0.07, -0.08);
+/** The phone, from the knees: above them and a little ahead (scaled with the person). */
+const PHONE_AT = { y: 0.06, z: 0.26 };
+/** How far in front of the palms the phone lies, towards the face (m). */
+const PHONE_GAP = 0.045;
 const UP = new Vector3(0, 1, 0);
 
 /** The index-to-little-finger line that gives a hand of side s the palm normal `palm` with the fingers along `fingers`. */
@@ -793,9 +803,11 @@ export class Avatar {
     if (pose === "sit_type" || pose === "stand_type") turn(r.chest ?? r.spine, LEFT, 0.12 * w, body);
     if (pose === "sit") turn(r.spine, LEFT, -0.12 * w, body);
     if (pose === "phone") {
-      // the back straight, only the head bowed to the phone (leaning in brought the face right onto it)
-      turn(r.neck, LEFT, 0.25 * w, body);
-      turn(r.head, LEFT, 0.2 * w, body);
+      // leaning forward, the elbows on the knees; the head looks down at the phone in the hands
+      turn(r.spine, LEFT, PHONE_LEAN.spine * w, body);
+      if (r.chest !== r.spine) turn(r.chest, LEFT, PHONE_LEAN.chest * w, body);
+      turn(r.neck, LEFT, PHONE_LEAN.neck * w, body);
+      turn(r.head, LEFT, PHONE_LEAN.head * w, body);
     }
     if (pose === "squat") turn(r.spine, LEFT, 0.45 * squat, body);
     if (pose === "interact") turn(r.chest ?? r.spine, LEFT, 0.1 * w, body);
@@ -851,25 +863,33 @@ export class Avatar {
           break;
         }
         case "phone": {
-          // both hands hold the phone in front of the chest, the right thumb scrolls now and then
+          // the elbows rest on the thighs just behind the knees, the forearms rise to the phone; both hands hold it
+          // from behind, the palms towards the face and the fingers up its back; the right thumb scrolls now and then
           const scroll = s === 1 ? 0.06 * Math.max(0, Math.sin(t * 1.7)) ** 8 : 0;
-          // both hands behind the phone, at its sides, the palms towards the face and the fingers up along its back;
-          // the phone some 35 cm from the eyes and below them
-          const at = this.phoneAt();
-          // the phone faces the eyes (tipped back about 50°): the wrists under its lower corners, the fingers up its back
-          const along = v3(-sign * 0.15, 0.75, 0.64);
-          this.armTo(s, v3(at.x + sign * 0.05, at.y - 0.06 + scroll * 0.15, at.z - 0.035), v3(sign * 0.6, -1, -0.3), w);
-          orient(hand, r.middle[s], r.index[s], r.pinky[s], along, palmAcross(s, v3(-sign * 0.25, 0.64, -0.76), along), body, w);
+          const knee = r.lowerLeg[s] ? body.worldToLocal(r.lowerLeg[s]!.getWorldPosition(new Vector3())) : null;
+          const shoulder = up ? body.worldToLocal(up.getWorldPosition(new Vector3())) : null;
+          const at = this.phoneAt(knee);
+          const { facing, along } = this.phoneFrame(at);
+          if (knee && shoulder) aim(up, low, knee.clone().add(PHONE_ELBOW).setX(knee.x - sign * 0.02).sub(shoulder), body, w);
+          else aim(up, low, v3(sign * 0.1, -0.9, 0.42), body, w);
+          const elbow = low ? body.worldToLocal(low.getWorldPosition(new Vector3())) : null;
+          const wrist = at.clone().addScaledVector(along, -0.06 + scroll * 0.15).addScaledVector(facing, -0.035).setX(at.x + sign * 0.05);
+          if (elbow) aim(low, hand, wrist.sub(elbow), body, w);
+          orient(hand, r.middle[s], r.index[s], r.pinky[s], along.clone().setX(-sign * 0.15), palmAcross(s, facing.clone().setX(-sign * 0.25), along), body, w);
           break;
         }
         case "sleep": {
-          // on the back the arms lie along the body; on a side the lower one is under the pillow and the upper one is
+          // on the back the arms lie relaxed on the mattress beside the body (the shoulders lie higher than the
+          // mattress, so the arms slope down to it); on a side the lower one is under the pillow and the upper one is
           // bent at the elbow (about 100°): the elbow down on the mattress in front of the chest, the hand on the pillow
           const top = s !== down;
           const upper = top ? v3(-sign * 0.7, 0.05, 0.7) : v3(sign * 0.35, 0.85, 0.35);
           const fore = top ? v3(-sign * 0.55, 0.75, -0.35) : v3(-sign * 0.45, 0.55, 0.6);
-          aim(up, low, v3(sign * 0.2, -1, 0.06).lerp(upper, side).normalize(), body, w);
-          aim(low, hand, v3(sign * 0.06, -1, 0.18).lerp(fore, side).normalize(), body, w);
+          aim(up, low, v3(sign * 0.3, -1, -0.5).lerp(upper, side).normalize(), body, w);
+          aim(low, hand, v3(sign * 0.12, -1, -0.05).lerp(fore, side).normalize(), body, w);
+          // on the back the hands lie flat on the mattress, the fingers along the forearm
+          const flat = v3(sign * BACK_HAND_DIR[0], BACK_HAND_DIR[1], BACK_HAND_DIR[2]);
+          orient(hand, r.middle[s], r.index[s], r.pinky[s], flat, palmAcross(s, v3(0, 0, -1), flat), body, w * (1 - side));
           break;
         }
         case "squat": {
@@ -896,9 +916,16 @@ export class Avatar {
       }
     }
 
-    // ---- the phone, in both hands and turned to the face
+    // ---- the phone, in both hands and turned to the face: put where the hands really are, a little in front of the
+    // palms (towards the face) so they hold it from behind and never cover it
     if (pose === "phone" && w > 0.6) {
-      this.phone.position.copy(this.phoneAt());
+      const knee = r.lowerLeg[0] ? body.worldToLocal(r.lowerLeg[0].getWorldPosition(new Vector3())) : null;
+      const { facing, along } = this.phoneFrame(this.phoneAt(knee));
+      const palms = r.middle[0] && r.middle[1] ? [r.middle[0], r.middle[1]] : r.hand[0] && r.hand[1] ? [r.hand[0], r.hand[1]] : null;
+      if (palms) {
+        const mid = body.worldToLocal(palms[0]!.getWorldPosition(_a)).add(body.worldToLocal(palms[1]!.getWorldPosition(_b))).multiplyScalar(0.5);
+        this.phone.position.copy(mid).addScaledVector(facing, PHONE_GAP).addScaledVector(along, 0.01);
+      } else this.phone.position.copy(this.phoneAt(knee));
       this.phone.visible = true;
       if (r.head) this.phone.lookAt(r.head.getWorldPosition(_d));
     }
@@ -917,34 +944,19 @@ export class Avatar {
     return this.phase === "posed" && this.spot?.pose === "sleep" ? this.sleepTurn().next : null;
   }
 
-  /** Where the phone is held (body frame): in front of the chest, scaled with the person. */
-  private phoneAt(): Vector3 {
-    // the body frame keeps the standing torso (sitting lowers the frame itself), so this is chest height in any pose
+  /** Where the phone is held (body frame): above the knees, where the forearms rising from them meet. */
+  private phoneAt(knee: Vector3 | null): Vector3 {
     const k = this.rest.hipY / 0.92;
-    return new Vector3(0, 1.3 * k, 0.3 * k);
+    if (!knee) return new Vector3(0, 1.3 * k, 0.3 * k);
+    return new Vector3(0, knee.y + PHONE_AT.y * k, knee.z + PHONE_AT.z * k);
   }
 
-  /** Two-bone arm: the wrist to a point (body frame), the elbow bending towards `pole`. */
-  private armTo(s: Side, wrist: Vector3, pole: Vector3, w: number): void {
-    const r = this.rig;
-    const upper = r.upperArm[s];
-    const lower = r.lowerArm[s];
-    const hand = r.hand[s];
-    if (!upper || !lower || !hand) return;
-    const shoulder = this.body.worldToLocal(upper.getWorldPosition(new Vector3()));
-    const { upperArm: a, foreArm: b } = this.rest;
-    const d = wrist.clone().sub(shoulder);
-    const dist = Math.max(0.05, Math.min(a + b - 0.002, d.length()));
-    const u = d.normalize();
-    const x = (a * a - b * b + dist * dist) / (2 * dist);
-    const h = Math.sqrt(Math.max(0, a * a - x * x));
-    const k = pole.clone().sub(u.clone().multiplyScalar(pole.dot(u)));
-    if (k.lengthSq() < 1e-8) k.set(0, -1, 0);
-    k.normalize();
-    const elbow = shoulder.clone().add(u.clone().multiplyScalar(x)).add(k.multiplyScalar(h));
-    const end = shoulder.clone().add(u.clone().multiplyScalar(dist));
-    aim(upper, lower, elbow.clone().sub(shoulder), this.body, w);
-    aim(lower, hand, end.sub(elbow), this.body, w);
+  /** The phone's frame (body frame): `facing` from it to the eyes, `along` up its face. */
+  private phoneFrame(at: Vector3): { facing: Vector3; along: Vector3 } {
+    const head = this.rig.head ? this.body.worldToLocal(this.rig.head.getWorldPosition(new Vector3())) : at.clone().add(v3(0, 0.4, -0.2));
+    const facing = head.add(v3(0, 0.06, 0.1)).sub(at).normalize();
+    const along = v3(0, 1, 0).addScaledVector(facing, -facing.y).normalize();
+    return { facing, along };
   }
 
   /** Two-bone leg: the ankle to a point (body frame), the knee bending towards `pole`. */

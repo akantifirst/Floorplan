@@ -46,8 +46,6 @@ import {
   WebGLRenderTarget,
   type BufferGeometry,
   type Material,
-  NotEqualStencilFunc,
-  ReplaceStencilOp,
 } from "three";
 import type { Building, Floor, Furniture, PlanNote, Room, StartView } from "../model.ts";
 import { recolorLamps, SHADE_SENTINEL, shadeFactors } from "./lamp-colors.ts";
@@ -95,7 +93,7 @@ import { ScreenLayer, type LiveScreen } from "./live-screens.ts";
 import { PictureLayer, type LivePicture } from "./live-pictures.ts";
 import { addMeshLighting, applyEnvironment, disposeMeshInstance, instantiateMesh, loadMesh } from "./meshes.ts";
 import { circlePath, cleaningPath, stepRobot, type RobotInfo, type RobotMotion } from "./robot.ts";
-import { smoothTrail, TRAIL_HOLD_MS, trailGeometry, trailOpacity } from "./robot-trail.ts";
+import { TRAIL_HOLD_MS, trailGeometry, trailOpacity } from "./robot-trail.ts";
 import { inReach } from "./tap-reach.ts";
 
 export type { RobotInfo } from "./robot.ts";
@@ -1431,8 +1429,7 @@ export class NextFloorViewer {
     if (this.weatherLayer && this.skyView) this.weatherLayer.set({ ...this.skyView, low: this.skyView.low || low });
     if (this.weatherLayer) this.buildHouseShadow();
     this.highQuality = quality === "high";
-    // a stencil buffer for the robot's pad (drawn once per pixel, see setRobotTrail)
-    const renderer = new WebGLRenderer({ antialias: !low, alpha: true, stencil: true, powerPreference: low ? "low-power" : "default" });
+    const renderer = new WebGLRenderer({ antialias: !low, alpha: true, powerPreference: low ? "low-power" : "default" });
     const ratio = Math.min(window.devicePixelRatio || 1, low ? 1 : quality === "high" ? 2.5 : 2);
     renderer.setPixelRatio(ratio);
     this.governor = quality === "auto" && !low ? new QualityGovernor(ratio, Math.min(1, ratio)) : null;
@@ -3032,19 +3029,7 @@ export class NextFloorViewer {
     }
     let mesh = old;
     if (!mesh) {
-      // through the stencil: each pixel of the pad is painted once, so the overlapping quads and discs make one even sheet
-      // instead of darker patches wherever they cover each other
-      const material = new MeshBasicMaterial({
-        color: 0x36c8ff,
-        transparent: true,
-        opacity: 0.34,
-        depthWrite: false,
-        side: DoubleSide,
-        stencilWrite: true,
-        stencilRef: 1,
-        stencilFunc: NotEqualStencilFunc,
-        stencilZPass: ReplaceStencilOp,
-      });
+      const material = new MeshBasicMaterial({ color: 0x36c8ff, transparent: true, opacity: 0.34, depthWrite: false, side: DoubleSide });
       mesh = new Mesh(trailGeometry([], 0.16, 0), material);
       mesh.renderOrder = 3;
       mesh.name = `robot-trail:${info.id}`;
@@ -3053,7 +3038,7 @@ export class NextFloorViewer {
       if (parent) parent.add(mesh);
     }
     mesh.geometry.dispose();
-    mesh.geometry = trailGeometry(smoothTrail(segments), 0.16, (info.y ?? 0) + 0.012);
+    mesh.geometry = trailGeometry(segments, 0.16, (info.y ?? 0) + 0.012);
     mesh.userData.key = key;
     this.showRobotTrail(info);
   }

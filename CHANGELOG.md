@@ -4,6 +4,14 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.32.1.10] – fork: animated person
+
+### Changed
+
+- **On the toilet with the phone, as people sit:** leaning forward about 45°, the elbows resting on the thighs by the knees, the forearms rising to the phone some 30 cm below and in front of the eyes. The phone is placed where the hands really are, a little in front of the palms, so they hold it from behind and the screen stays visible (before, the hands covered it).
+- **Lying on the back the arms rest on the mattress** beside the body, the hands flat on it, instead of hanging in the air at shoulder height.
+- **The robot pad looks as it did before 0.32.1.7** (the translucent ribbon with its lighter and denser parts); the smoothed, even sheet is gone.
+
 ## [0.32.1.9] – fork: animated person
 
 ### Fixed
