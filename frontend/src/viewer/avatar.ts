@@ -252,10 +252,13 @@ export interface AvatarSpot extends AvatarSpotInfo {
   stand: Vec2;
 }
 
-/** Sleep: each position is held this long (s), a turn takes SLEEP_TURN (s); the order back, left, back, right. */
+/**
+ * Sleep: each position is held this long (s), a turn takes SLEEP_TURN (s). It lies down on the left side (the right leg
+ * drawn up), then turns onto the back, onto the right side (the left leg up), onto the back, and so on.
+ */
 const SLEEP_EACH = 20;
 const SLEEP_TURN = 3;
-const SLEEP_ORDER = [0, 1, 0, -1] as const;
+const SLEEP_ORDER = [1, 0, -1, 0] as const;
 /** How far it rolls onto a side (a little past 90°, a touch onto the belly as people lie) and how much higher it lies then. */
 const SIDE_ROLL = (95 * Math.PI) / 180;
 const SIDE_LIFT = 0.17;
@@ -274,7 +277,7 @@ export interface SleepTurn {
   next: number;
 }
 
-/** Turning over in sleep, `elapsed` seconds after lying down: back, left side, back, right side, each SLEEP_EACH s. */
+/** Turning over in sleep, `elapsed` seconds after lying down: left side, back, right side, back …, each SLEEP_EACH s. */
 export function sleepTurnAt(elapsed: number): SleepTurn {
   const el = Math.max(0, elapsed);
   const seg = Math.floor(el / SLEEP_EACH);
@@ -697,10 +700,13 @@ export class Avatar {
       // and every 20 s it turns over about its spine: on the back, the left side, the back, the right side …
       const th = (-Math.PI / 2) * w;
       const roll = this.sleepTurn().roll * w;
-      side = Math.abs(Math.sin(roll));
+      // the arms and legs follow the turn late (cubed): drawn up while the body still lies half on its back, the
+      // upper knee would go through the mattress
+      const onSide = Math.abs(Math.sin(roll));
+      side = onSide ** 3;
       down = roll > 0 ? 0 : 1;
       // on its side the shoulder and hip carry it: a little higher than on its back
-      const hipsTo = rest.hipY + (spot.seat + 0.12 + SIDE_LIFT * (rest.hipY / 0.92) * side - rest.hipY) * w;
+      const hipsTo = rest.hipY + (spot.seat + 0.12 + SIDE_LIFT * (rest.hipY / 0.92) * onSide - rest.hipY) * w;
       body.rotation.set(th, roll, 0);
       body.position.set(0, hipsTo - rest.hipY * Math.cos(th), -rest.hipY * Math.sin(th));
     } else if (pose === "sit" || pose === "sit_type" || pose === "phone") {
@@ -734,10 +740,11 @@ export class Avatar {
       } else if (pose === "squat") {
         this.legTo(s, v3(sign * rest.footX * (1 + 0.4 * w), rest.ankleY - body.position.y, -body.position.z), v3(sign * 0.25, 0.2, 1), w);
       } else if (pose === "sleep") {
-        // on the back the legs lie straight; on a side the upper leg is drawn up, the lower one bent a little
+        // on the back the legs lie straight; on a side the upper thigh is drawn up past a right angle and falls forward
+        // onto the mattress, its shin lying along it, and the lower leg is bent a little
         const top = s !== down;
-        const thigh = top ? v3(sign * 0.05, -0.5, 0.87) : v3(sign * 0.04, -0.95, 0.3);
-        const shin = top ? v3(sign * 0.05, -0.9, -0.42) : v3(sign * 0.02, -0.95, -0.3);
+        const thigh = top ? v3(-sign * 0.66, 0.1, 0.75) : v3(sign * 0.04, -0.95, 0.3);
+        const shin = top ? v3(-sign * 0.12, -0.95, -0.25) : v3(sign * 0.02, -0.95, -0.3);
         aim(r.upperLeg[s], r.lowerLeg[s], v3(sign * 0.06, -1, 0.02).lerp(thigh, side), body, w);
         aim(r.lowerLeg[s], this.ankles[s], v3(sign * 0.02, -1, 0).lerp(shin, side), body, w);
       }
@@ -782,10 +789,11 @@ export class Avatar {
           break;
         }
         case "sleep": {
-          // on the back the arms lie along the body; on a side the lower one is under the pillow, the upper one on it
+          // on the back the arms lie along the body; on a side the lower one is under the pillow and the upper one is
+          // bent at the elbow (about 100°): the elbow down on the mattress in front of the chest, the hand on the pillow
           const top = s !== down;
-          const upper = top ? v3(sign * 0.15, 0.45, 0.88) : v3(sign * 0.35, 0.85, 0.35);
-          const fore = top ? v3(-sign * 0.2, 0.85, 0.45) : v3(-sign * 0.45, 0.55, 0.6);
+          const upper = top ? v3(-sign * 0.7, 0.05, 0.7) : v3(sign * 0.35, 0.85, 0.35);
+          const fore = top ? v3(-sign * 0.55, 0.75, -0.35) : v3(-sign * 0.45, 0.55, 0.6);
           aim(up, low, v3(sign * 0.2, -1, 0.06).lerp(upper, side).normalize(), body, w);
           aim(low, hand, v3(sign * 0.06, -1, 0.18).lerp(fore, side).normalize(), body, w);
           break;
@@ -823,8 +831,8 @@ export class Avatar {
   }
 
   /**
-   * Turning over in sleep, by the clock: 20 s on the back, then 20 s on the left side, on the back, on the right side
-   * and so on; each turn takes TURN seconds. The roll (radians, + = left side down) and whether it is turning now.
+   * Turning over in sleep, by the clock: 20 s on the left side (right leg up), then on the back, on the right side, on
+   * the back and so on; each turn takes SLEEP_TURN seconds. The roll (radians, + = left side down), whether it turns.
    */
   sleepTurn(): SleepTurn {
     return sleepTurnAt(this.clock() - this.sleepSince);

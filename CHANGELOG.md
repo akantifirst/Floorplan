@@ -4,6 +4,12 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.32.1.8] – fork: animated person
+
+### Changed
+
+- **A more natural side sleep.** It lies down on the left side with the right leg drawn up, turns onto the back, then onto the right side with the left leg up, and so on. On a side the upper thigh is drawn up past a right angle and its knee rests on the mattress, the shin along it; the upper arm is bent at the elbow (about 100°), the elbow on the mattress and the hand on the pillow, instead of hanging in the air. The arms and legs follow a turn late, so no knee goes through the mattress while the body is still half on its back.
+
 ## [0.32.1.7] – fork: animated person
 
 ### Changed
