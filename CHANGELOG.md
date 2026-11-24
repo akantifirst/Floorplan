@@ -4,6 +4,13 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.32.1.2] – fork: animated person
+
+### Fixed
+
+- **The person's upper body no longer spins.** Rigs whose clips leave some bones unkeyed (the spine and the neck of Quaternius' characters) kept the pose's turns from frame to frame, so the torso rolled further and further; every frame now starts from the model's rest pose.
+- **Legs keep their length when the person sits, squats or lies down.** In IK rigs the foot hangs from the root, not from the shin, so it stayed where the clip had put it and the shin stretched down to it (long legs on the toilet); the foot now goes along with the shin.
+
 ## [0.32.1.1] – fork: animated person
 
 ### Added

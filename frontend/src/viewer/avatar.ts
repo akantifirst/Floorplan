@@ -15,13 +15,13 @@ import {
   LoopRepeat,
   Mesh,
   MeshStandardMaterial,
+  Object3D,
   Quaternion,
   Vector3,
   type AnimationAction,
   type AnimationClip,
   type Bone,
   type Material,
-  type Object3D,
   type SkinnedMesh,
   type Texture,
 } from "three";
@@ -218,6 +218,19 @@ export class Avatar {
   private actions = new Map<string, AnimationAction>();
   private base: AnimationAction | null = null;
   private rig: Rig;
+  /**
+   * Every bone with its turn in the model's rest pose. The clips do not key every bone (this one has no track for the
+   * spine or the neck), and the mixer leaves an unkeyed bone as it was, so the pose's turns would add up frame by frame
+   * and spin the body: each frame starts from the rest pose instead.
+   */
+  private restTurns: [Bone, Quaternion, Vector3][] = [];
+  /**
+   * The ankle at the end of each shin, carried by the shin. In IK rigs (Quaternius and the like) the foot is not a child of
+   * the shin but of the root, so it stays where the clip put it when the body sits down: the shin's skin would stretch to
+   * it. The legs aim with these, and a detached foot is moved onto them.
+   */
+  private ankles: (Object3D | null)[] = [null, null];
+  private detachedFeet: boolean[] = [false, false];
   private rest = { hipY: 0.95, ankleY: 0.08, footX: 0.1, thigh: 0.45, shin: 0.45 };
   private phone: Mesh;
   private own: Material[] = [];
@@ -271,6 +284,22 @@ export class Avatar {
     this.body.add(this.inner);
     this.group.add(this.body);
     this.rig = findRig(inst);
+    inst.traverse((o) => {
+      if ((o as Bone).isBone) this.restTurns.push([o as Bone, (o as Bone).quaternion.clone(), (o as Bone).position.clone()]);
+    });
+    inst.updateMatrixWorld(true);
+    for (const s of [0, 1] as Side[]) {
+      const lower = this.rig.lowerLeg[s];
+      const foot = this.rig.foot[s];
+      if (!lower || !foot) continue;
+      const ankle = new Object3D();
+      ankle.position.copy(lower.worldToLocal(foot.getWorldPosition(new Vector3())));
+      lower.add(ankle);
+      this.ankles[s] = ankle;
+      let up: Object3D | null = foot.parent;
+      while (up && up !== lower) up = up.parent;
+      this.detachedFeet[s] = up !== lower;
+    }
     this.normalise(height);
     this.mixer = new AnimationMixer(inst);
     this.clips = model.clips;
@@ -519,6 +548,10 @@ export class Avatar {
         break;
       }
     }
+    for (const [bone, q, at] of this.restTurns) {
+      bone.quaternion.copy(q);
+      bone.position.copy(at);
+    }
     this.mixer.update(dt);
     this.place();
     this.pose(this.spot, this.spot ? smooth(this.w) : 0);
@@ -595,9 +628,16 @@ export class Avatar {
         this.legTo(s, v3(sign * rest.footX * (1 + 0.4 * w), rest.ankleY - body.position.y, -body.position.z), v3(sign * 0.25, 0.2, 1), w);
       } else if (pose === "sleep") {
         aim(r.upperLeg[s], r.lowerLeg[s], v3(sign * 0.06, -1, 0.02), body, w);
-        aim(r.lowerLeg[s], r.foot[s], v3(sign * 0.02, -1, 0), body, w);
+        aim(r.lowerLeg[s], this.ankles[s], v3(sign * 0.02, -1, 0), body, w);
       }
-      if (pose !== "sleep") holdWorld(r.foot[s], feetWorld[s]!, w);
+      // a foot of an IK rig goes along with the shin it no longer follows by itself
+      const foot = r.foot[s];
+      const ankle = this.ankles[s];
+      if ((sit || pose === "squat" || pose === "sleep") && this.detachedFeet[s] && foot?.parent && ankle) {
+        foot.position.copy(foot.parent.worldToLocal(ankle.getWorldPosition(_a)));
+        foot.updateMatrixWorld(true);
+      }
+      if (pose !== "sleep") holdWorld(foot, feetWorld[s]!, w);
     }
 
     // ---- arms
@@ -667,7 +707,7 @@ export class Avatar {
     const r = this.rig;
     const upper = r.upperLeg[s];
     const lower = r.lowerLeg[s];
-    const foot = r.foot[s];
+    const foot = this.ankles[s];
     if (!upper || !lower || !foot) return;
     const hip = this.body.worldToLocal(upper.getWorldPosition(new Vector3()));
     const { thigh: a, shin: b } = this.rest;
