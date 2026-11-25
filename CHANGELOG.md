@@ -4,6 +4,16 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.32.1.13] – fork: animated person
+
+### Added
+
+- **A second person who lives freely.** An avatar item with `"avatar": {"roam": true}` needs no sensor: it wanders between the spots listing `roam`, sits and lies down more often (and longer) than it stands, and sleeps at the spot listing `roam_sleep` while someone else sleeps. People keep clear of each other: a spot someone else is in or heading for is passed over while another fits, and a wanderer leaves at once when someone heads for its spot.
+
+### Changed
+
+- **Poses fit any model's build.** Asleep on a side the body rests on whatever part of it touches the mattress first (the skin is measured while it turns, hands left out), and on the back the arms slope from the measured shoulder height down to the mattress. In an armchair the trunk's lean is measured and corrected (spines differ), the hands are placed on the thighs, the body slides back until the back's skin meets the backrest, and legs too short to reach the floor from there come up onto the seat. A Mixamo idle that shifts the hips onto one leg no longer tips a sleeper sideways.
+
 ## [0.32.1.12] – fork: animated person
 
 ### Changed

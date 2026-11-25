@@ -87,3 +87,12 @@ test("the nearest free place can be held to one room, so a spot by a wall is not
   const held = grid.nearestFree(spot, inLeft)!;
   assert.ok(grid.center(held[0], held[1])[0] < 4, "held to the spot's room: the left one");
 });
+
+test("a spot someone else has taken is passed over while another one fits", () => {
+  const a = { id: "a", floorId: "f", pose: "sit", states: ["idle"] };
+  const b = { id: "b", floorId: "f", pose: "sit", states: ["idle"] };
+  const free = (s: { id: string }) => s.id !== "a";
+  assert.equal(spotFor([a, b], "idle", null, 0, free), b, "the free armchair");
+  assert.equal(spotFor([a, b], "idle", a, 0, free), a, "one already sitting there stays");
+  assert.equal(spotFor([a], "idle", null, 0, free), a, "no other fits: the taken one after all");
+});

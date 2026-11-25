@@ -267,11 +267,16 @@ export interface AvatarSpotInfo {
  * The spot for a state of the activity sensor: the one that lists it; several listing it (idle corners) are taken in turn
  * with `pick`. The current spot is kept while it still fits, so a state that only changes its name does not make it walk.
  */
-export function spotFor<T extends AvatarSpotInfo>(spots: T[], state: string | null, current: T | null, pick: number): T | null {
+export function spotFor<T extends AvatarSpotInfo>(spots: T[], state: string | null, current: T | null, pick: number, free?: (spot: T) => boolean): T | null {
   if (!state) return null;
   const s = state.trim().toLowerCase();
-  const fitting = spots.filter((p) => p.states.includes(s));
+  let fitting = spots.filter((p) => p.states.includes(s));
   if (!fitting.length) return null;
+  // spots someone else has taken are passed over while another one fits (an armchair the other person sits in)
+  if (free) {
+    const open = fitting.filter((p) => p === current || free(p));
+    if (open.length) fitting = open;
+  }
   if (current && fitting.includes(current)) return current;
   return fitting[Math.abs(Math.floor(pick)) % fitting.length];
 }

@@ -230,11 +230,18 @@ const PHONE_GAP = 0.045;
 const UP = new Vector3(0, 1, 0);
 /**
  * An armchair ("sit"), half lying: the hips this far above the seat and back from the spot (m; negative: slid forward,
- * so the knees rest on the front of a deep seat), the pelvis, spine and chest leant back onto the backrest (about 55°)
- * and the neck bent forward again to look ahead (radians), the feet stretched out this far ahead of the spot and this
- * much wider than standing.
+ * so the knees rest on the front of a deep seat), the pelvis, spine and chest leant back onto the backrest, the trunk
+ * then brought to `lean` (radians from upright, about 54°) and the head to `head`, the hands `handUp` above the thighs,
+ * the feet stretched out this far ahead of the spot and this much wider than standing.
  */
-const LOUNGE = { hips: 0.15, back: -0.12, pelvis: 0.8, recline: 0.2, chest: 0.1, neck: 0.9, feet: 0.92, feetApart: 1.5 };
+/**
+ * The backrest of an armchair spot (the pack's floor lounge chair), in the spot's frame: its face starts at `z` behind the
+ * spot at height `from` and leans back by `slope` (m back per m up) up to `to`.
+ */
+const BACKREST = { z: -0.22, from: 0.12, to: 0.67, slope: 0.364 };
+/** ...and its seat cushion: its top and its front edge (m, same frame). */
+const SEAT = { top: 0.27, front: 0.5 };
+const LOUNGE = { hips: 0.15, back: -0.12, pelvis: 0.8, recline: 0.2, chest: 0.1, lean: 0.94, head: 0.07, handUp: 0.07, feet: 0.92, feetApart: 1.5 };
 /** How far the toes turn out when the pose sets the feet (radians). */
 const TOE_OUT = (10 * Math.PI) / 180;
 
@@ -279,9 +286,12 @@ export interface AvatarSpot extends AvatarSpotInfo {
 const SLEEP_EACH = 20;
 const SLEEP_TURN = 3;
 const SLEEP_ORDER = [1, 0, -1, 0] as const;
-/** How far it rolls onto a side (a little past 90°, a touch onto the belly as people lie) and how much higher it lies then. */
+/** How far it rolls onto a side (a little past 90°, a touch onto the belly as people lie). */
 const SIDE_ROLL = (95 * Math.PI) / 180;
-const SIDE_LIFT = 0.17;
+/** Asleep, the elbows rest this high above the mattress (m, for a person whose hips are 0.92 m up). */
+const SLEEP_REST = { elbow: 0.05 };
+/** ...and lying on a side, the lowest part of it sinks this far into the mattress (m, same scale). */
+const SLEEP_SINK = 0.01;
 
 const smooth = (t: number) => {
   const x = Math.max(0, Math.min(1, t));
@@ -333,7 +343,7 @@ export class Avatar {
    * chest and shoulders like a standing person shifting weight; lying down that twist made the back pose lopsided and
    * sent an arm into the body on one side, so asleep the trunk goes back to this.
    */
-  private trunkRest: [Bone, Quaternion][] = [];
+  private trunkRest: [Bone, Quaternion, Vector3][] = [];
   /**
    * The rest pose may stand in a stride: the bone the legs hang from is turned (this model: the right hip 11 cm ahead).
    * Where the pose sets the legs (sitting, squatting, lying) that bone turns back by `strideYaw` so the hips are level,
@@ -352,11 +362,80 @@ export class Avatar {
    */
   private ankles: (Object3D | null)[] = [null, null];
   private detachedFeet: boolean[] = [false, false];
+  /** How far back the seated body slides to lean on the backrest (measured once). */
+  private loungeShift: number | null = null;
+
+  /** The gap between the back's skin and the armchair's backrest (m; negative: it presses into it), from the trunk. */
+  private backrestGap(): number {
+    this.group.updateMatrixWorld(true);
+    const limbs = new Set<Object3D>();
+    for (const b of [...this.rig.upperArm, ...this.rig.upperLeg, this.rig.head]) b?.traverse((x) => void limbs.add(x));
+    let gap = Infinity;
+    const v = new Vector3();
+    this.inner.traverse((o) => {
+      const m = o as SkinnedMesh;
+      if (!m.isSkinnedMesh || !m.visible) return;
+      m.skeleton.update();
+      const { skinIndex, skinWeight } = m.geometry.attributes;
+      if (!skinIndex || !skinWeight) return;
+      for (let i = 0; i < m.geometry.attributes.position.count; i += 2) {
+        let main = 0;
+        for (let k = 1; k < 4; k++) if (skinWeight.getComponent(i, k) > skinWeight.getComponent(i, main)) main = k;
+        if (limbs.has(m.skeleton.bones[skinIndex.getComponent(i, main)]!)) continue;
+        m.getVertexPosition(i, v);
+        const p = this.group.worldToLocal(m.localToWorld(v));
+        if (p.y < BACKREST.from || p.y > BACKREST.to || Math.abs(p.x) > 0.2) continue;
+        gap = Math.min(gap, p.z - (BACKREST.z - (p.y - BACKREST.from) * BACKREST.slope));
+      }
+    });
+    return Number.isFinite(gap) ? Math.max(-0.05, Math.min(0.25, gap - 0.01)) : 0;
+  }
+
+  /** How far up a side-sleeping body goes so its lowest part rests on the mattress, per side down (measured once). */
+  private sideLift: (number | null)[] = [null, null];
+
+  /** The bones of both hands and their fingers (they never carry the body: long fingers hanging down propped it up). */
+  private handBones: Set<Object3D> | null = null;
+
+  /** How far the lowest point of the skin is above `seat` (group frame), from every third vertex, hands and `skip` left out. */
+  private lowestAbove(seat: number, skip: Object3D | null = null): number {
+    this.group.updateMatrixWorld(true);
+    if (!this.handBones) {
+      const set = new Set<Object3D>();
+      for (const h of this.rig.hand) h?.traverse((b) => void set.add(b));
+      this.handBones = set;
+    }
+    const hands = this.handBones;
+    const skipped = new Set<Object3D>();
+    skip?.traverse((b) => void skipped.add(b));
+    let low = Infinity;
+    const v = new Vector3();
+    this.inner.traverse((o) => {
+      const m = o as SkinnedMesh;
+      if (!m.isSkinnedMesh || !m.visible) return;
+      m.skeleton.update();
+      const { skinIndex, skinWeight } = m.geometry.attributes;
+      const bones = m.skeleton.bones;
+      const n = m.geometry.attributes.position.count;
+      for (let i = 0; i < n; i += 3) {
+        if (skinIndex && skinWeight) {
+          let main = 0;
+          for (let k = 1; k < 4; k++) if (skinWeight.getComponent(i, k) > skinWeight.getComponent(i, main)) main = k;
+          const bone = bones[skinIndex.getComponent(i, main)]!;
+          if (hands.has(bone) || skipped.has(bone)) continue;
+        }
+        m.getVertexPosition(i, v);
+        low = Math.min(low, this.group.worldToLocal(m.localToWorld(v)).y);
+      }
+    });
+    return Number.isFinite(low) ? low - seat : 0;
+  }
+
   /** The tip of the toes in each foot's own frame (the foot's farthest skinned point), to turn the toes forward. */
   private toeTips: (Vector3 | null)[] = [null, null];
   /** The foot's turn relative to the shin in the rest pose: lying down, a detached foot keeps this angle at the ankle. */
   private ankleTurn: (Quaternion | null)[] = [null, null];
-  private rest = { hipY: 0.95, ankleY: 0.08, footX: 0.1, thigh: 0.45, shin: 0.45, upperArm: 0.28, foreArm: 0.26 };
+  private rest = { hipY: 0.95, ankleY: 0.08, footX: 0.1, thigh: 0.45, shin: 0.45, upperArm: 0.28, foreArm: 0.26, hipsApart: 0.2 };
   private phone: Mesh;
   private own: Material[] = [];
 
@@ -419,7 +498,7 @@ export class Avatar {
     const trunk = /^(hips|pelvis|abdomen|spine\d*|torso|chest|upperchest|neck|head|shoulder(l|r|left|right)|(left|right)shoulder|clavicle(l|r))$/;
     inst.traverse((o) => {
       const name = norm(o.name).replace(/^(mixamorig|characterarmature)/, "");
-      if ((o as Bone).isBone && trunk.test(name)) this.trunkRest.push([o as Bone, (o as Bone).quaternion.clone()]);
+      if ((o as Bone).isBone && trunk.test(name)) this.trunkRest.push([o as Bone, (o as Bone).quaternion.clone(), (o as Bone).position.clone()]);
     });
     inst.updateMatrixWorld(true);
     for (const s of [0, 1] as Side[]) {
@@ -485,6 +564,7 @@ export class Avatar {
         shin: knee.distanceTo(ankle),
         upperArm: this.rest.upperArm,
         foreArm: this.rest.foreArm,
+        hipsApart: r.upperLeg[1] ? hip.distanceTo(p(r.upperLeg[1])!) : this.rest.hipsApart,
       };
     } else this.rest.hipY = height * 0.52;
     const shoulder = p(r.upperArm[0]);
@@ -618,6 +698,38 @@ export class Avatar {
 
   private spots: AvatarSpot[] = [];
   private navFor: (floorId: string) => NavGrid | null = () => null;
+  /** Whether a spot is free of the other people (set by the view); taken spots are passed over while another fits. */
+  free: (spot: AvatarSpot) => boolean = () => true;
+
+  /** The spot it is in or on its way to (none while away). */
+  claim(): AvatarSpot | null {
+    return this.phase === "hidden" ? null : (this.target ?? this.spot);
+  }
+
+  /** Asleep, or on its way to bed. */
+  asleep(): boolean {
+    return this.claim()?.pose === "sleep";
+  }
+
+  /** The plan was drawn anew: take the new spot objects, keep doing what it does (no sensor to choose by). */
+  respot(spots: AvatarSpot[], nav: (floorId: string) => NavGrid | null): void {
+    this.navFor = nav;
+    if (spots === this.spots) return;
+    const same = (x: AvatarSpot | null) => (x ? (spots.find((p) => p.id === x.id) ?? null) : null);
+    this.spot = same(this.spot);
+    this.target = same(this.target);
+    if (this.phase === "posed" && !this.spot && this.w > 0) this.phase = "rising";
+    this.spots = spots;
+  }
+
+  /** Go to this spot (a person without a sensor, sent by the view). */
+  visit(spot: AvatarSpot, spots: AvatarSpot[], nav: (floorId: string) => NavGrid | null): void {
+    this.respot(spots, nav);
+    const there = this.spots.find((p) => p.id === spot.id) ?? spot;
+    this.state = `@${there.id}`;
+    if (this.claim() === there) return;
+    this.goTo(there);
+  }
 
   /**
    * The activity sensor's state and the spots of the plan. A new spot makes the avatar stand up, walk there and settle;
@@ -642,8 +754,8 @@ export class Avatar {
   private choose(next = false): void {
     const s = this.state;
     const current = this.target ?? this.spot;
-    let want = spotFor(this.spots, s, next ? null : current, this.wander);
-    if (next && want === current) want = spotFor(this.spots, s, null, ++this.wander);
+    let want = spotFor(this.spots, s, next ? null : current, this.wander, this.free);
+    if (next && want === current) want = spotFor(this.spots, s, null, ++this.wander, this.free);
     if (!want) {
       if (s === null || ["away", "not_home", "unavailable", "unknown", "off"].includes(s)) {
         const exit = this.spots.find((p) => p.pose === "away" && p.floorId === this.floorId) ?? this.spots.find((p) => p.pose === "away");
@@ -821,6 +933,7 @@ export class Avatar {
     let squat = 0;
     // sleeping on a side: how far (0 on the back … 1 on the side) and which side is down (0 = left)
     let side = 0;
+    let onSide = 0;
     let down: Side = 0;
     if (pose === "sleep") {
       // tip over backwards onto the bed: the head towards the spot's back, the hips over its middle
@@ -829,11 +942,11 @@ export class Avatar {
       const roll = this.sleepTurn().roll * w;
       // the arms and legs follow the turn late (cubed): drawn up while the body still lies half on its back, the
       // upper knee would go through the mattress
-      const onSide = Math.abs(Math.sin(roll));
+      onSide = Math.abs(Math.sin(roll));
       side = onSide ** 3;
       down = roll > 0 ? 0 : 1;
-      // on its side the shoulder and hip carry it: a little higher than on its back
-      const hipsTo = rest.hipY + (spot.seat + 0.12 + SIDE_LIFT * (rest.hipY / 0.92) * onSide - rest.hipY) * w;
+      // on its side the shoulder and hip carry it: lifted onto them once the limbs are set (see the end)
+      const hipsTo = rest.hipY + (spot.seat + 0.12 - rest.hipY) * w;
       body.rotation.set(th, roll, 0);
       body.position.set(0, hipsTo - rest.hipY * Math.cos(th), -rest.hipY * Math.sin(th));
     } else if (pose === "sit") {
@@ -848,7 +961,12 @@ export class Avatar {
       squat = ((1 - Math.cos((2 * Math.PI * t) / 3.2)) / 2) * w;
       body.position.set(0, -0.42 * squat, -0.12 * squat);
     }
-    if (pose === "sleep") for (const [bone, q] of this.trunkRest) bone.quaternion.slerp(q, w);
+    // the turns and the place (a Mixamo idle sways the hips sideways onto one leg, which tipped one side into the bed)
+    if (pose === "sleep")
+      for (const [bone, q, at] of this.trunkRest) {
+        bone.quaternion.slerp(q, w);
+        bone.position.lerp(at, w);
+      }
     this.group.updateMatrixWorld(true);
     if (this.strideRoot && (pose === "sit" || pose === "sit_type" || pose === "phone" || pose === "squat" || pose === "sleep")) {
       // level the hips of a rest pose in a stride; the trunk keeps its turn, the figure stays centred
@@ -866,8 +984,31 @@ export class Avatar {
       turn(r.hips, LEFT, -LOUNGE.pelvis * w, body);
       turn(r.spine, LEFT, -LOUNGE.recline * w, body);
       if (r.chest !== r.spine) turn(r.chest, LEFT, -LOUNGE.chest * w, body);
-      turn(r.neck, LEFT, LOUNGE.neck * w, body);
+      // spines differ (a Mixamo one has three bones): measure the trunk's lean and tip the pelvis by what is missing,
+      // then bend the neck until the head is upright again
+      const backward = (from: Object3D | null, to: Object3D | null) => {
+        if (!from || !to) return null;
+        const a = body.worldToLocal(from.getWorldPosition(new Vector3()));
+        const b = body.worldToLocal(to.getWorldPosition(new Vector3()));
+        return Math.atan2(a.z - b.z, b.y - a.y);
+      };
+      const lean = backward(r.hips, r.neck);
+      if (lean !== null) turn(r.hips, LEFT, -(LOUNGE.lean * w - lean), body);
+      const tilt = backward(r.neck, r.head);
+      if (tilt !== null) turn(r.neck, LEFT, tilt - LOUNGE.head * w, body);
     }
+    // an armchair: slide back until the back rests against the backrest (a slim figure was left well in front of it);
+    // the skin is measured once per person (before the legs, which then reach the same place on the floor)
+    if (pose === "sit" && w > 0.01) {
+      let shift = this.loungeShift;
+      if (shift === null) {
+        shift = this.backrestGap();
+        if (w > 0.999 && this.phase === "posed") this.loungeShift = shift;
+      }
+      body.position.z -= shift * w;
+      this.group.updateMatrixWorld(true);
+    }
+
     if (pose === "phone") {
       // leaning forward, the elbows on the knees; the head looks down at the phone in the hands
       turn(r.spine, LEFT, PHONE_LEAN.spine * w, body);
@@ -884,9 +1025,15 @@ export class Avatar {
       if (sit) {
         const floorY = -body.position.y;
         if (pose === "sit") {
-          // an armchair: the legs stretched out, the feet on the floor well beyond the front of the seat, a little apart
+          // an armchair: the legs stretched out, the feet on the floor well beyond the front of the seat, a little apart;
+          // legs too short for that from the backrest (the seat is deeper than the thighs) come up onto the seat instead
           const k = rest.hipY / 0.92;
-          this.legTo(s, v3(sign * rest.footX * LOUNGE.feetApart, rest.ankleY + floorY, (LOUNGE.feet * k - body.position.z) * w), v3(sign * 0.2, 1, 0.3), w);
+          const onFloor = v3(sign * rest.footX * LOUNGE.feetApart, rest.ankleY + floorY, (LOUNGE.feet * k - body.position.z) * w);
+          const hipAt = r.upperLeg[s] ? body.worldToLocal(r.upperLeg[s]!.getWorldPosition(new Vector3())) : null;
+          if (hipAt && hipAt.distanceTo(onFloor) > (rest.thigh + rest.shin) * 0.97) {
+            const onSeat = v3(sign * rest.footX * 1.6, SEAT.top + rest.ankleY - body.position.y, SEAT.front - 0.1 - body.position.z);
+            this.legTo(s, onFloor.lerp(onSeat, w), v3(sign * 0.35, 1, 0.1), w);
+          } else this.legTo(s, onFloor, v3(sign * 0.2, 1, 0.3), w);
         } else {
           // thighs forward, shins down to the floor in front of the seat
           this.legTo(s, v3(sign * rest.footX * 1.15, rest.ankleY + floorY, (rest.thigh * 0.95 + 0.06) * w), v3(0, 0.3, 1), w);
@@ -897,7 +1044,9 @@ export class Avatar {
         // on the back the legs lie straight; on a side the upper thigh is drawn up past a right angle and falls forward
         // onto the mattress, its shin lying along it, and the lower leg is bent a little
         const top = s !== down;
-        const thigh = top ? v3(-sign * 0.66, 0.1, 0.75) : v3(sign * 0.04, -0.95, 0.3);
+        // the upper knee drops onto the mattress about as far as the hips are apart (lower: it would carry the body)
+        const fall = Math.min(0.8, Math.max(0.2, rest.hipsApart / rest.thigh));
+        const thigh = top ? v3(-sign * fall, 0.1, Math.sqrt(Math.max(0.05, 1 - fall * fall - 0.01))) : v3(sign * 0.04, -0.95, 0.3);
         const shin = top ? v3(sign * 0.05, -0.95, -0.25) : v3(sign * 0.02, -0.95, -0.3);
         aim(r.upperLeg[s], r.lowerLeg[s], v3(sign * 0.06, -1, 0.02).lerp(thigh, side), body, w);
         aim(r.lowerLeg[s], this.ankles[s], v3(sign * 0.02, -1, 0).lerp(shin, side), body, w);
@@ -953,9 +1102,17 @@ export class Avatar {
           break;
         }
         case "sit": {
-          // an armchair: the arms relaxed, the hands lying on the thighs
-          aim(up, low, v3(sign * 0.25, -0.85, 0.3), body, w);
-          aim(low, hand, v3(-sign * 0.05, -0.35, 1), body, w);
+          // an armchair: the arms relaxed, the hands lying on top of the thighs, the elbows a little out
+          const k = rest.hipY / 0.92;
+          const at = (b: Object3D | null) => (b ? body.worldToLocal(b.getWorldPosition(new Vector3())) : null);
+          const [hip, knee, shoulder] = [at(r.upperLeg[s]), at(r.lowerLeg[s]), at(up)];
+          if (hip && knee && shoulder) {
+            const onThigh = hip.lerp(knee, 0.55).add(v3(0, LOUNGE.handUp * k, 0));
+            const elbowAt = shoulder.clone().lerp(onThigh, 0.5).add(v3(sign * 0.08 * k, -0.04 * k, -0.04 * k));
+            aim(up, low, elbowAt.sub(shoulder), body, w);
+            const elbow = at(low);
+            if (elbow) aim(low, hand, onThigh.sub(elbow), body, w);
+          }
           break;
         }
         case "sleep": {
@@ -965,7 +1122,12 @@ export class Avatar {
           const top = s !== down;
           const upper = top ? v3(-sign * 0.7, 0.05, 0.7) : v3(sign * 0.35, 0.85, 0.35);
           const fore = top ? v3(-sign * 0.55, 0.75, -0.35) : v3(-sign * 0.45, 0.55, 0.6);
-          aim(up, low, v3(sign * 0.3, -1, -0.5).lerp(upper, side).normalize(), body, w);
+          // on the back the upper arm slopes from the shoulder down so the elbow lies on the mattress
+          const k = rest.hipY / 0.92;
+          const shoulderUp = up ? this.group.worldToLocal(up.getWorldPosition(_a)).y - spot.seat : 0;
+          const sine = -Math.min(0.75, Math.max(0, shoulderUp - SLEEP_REST.elbow * k) / Math.max(0.05, rest.upperArm));
+          const slope = (sine * Math.hypot(0.3, 1)) / Math.sqrt(1 - sine * sine);
+          aim(up, low, v3(sign * 0.3, -1, slope).lerp(upper, side).normalize(), body, w);
           aim(low, hand, v3(sign * 0.12, -1, -0.05).lerp(fore, side).normalize(), body, w);
           // on the back the hands lie flat on the mattress, the fingers along the forearm
           const flat = v3(sign * BACK_HAND_DIR[0], BACK_HAND_DIR[1], BACK_HAND_DIR[2]);
@@ -994,6 +1156,19 @@ export class Avatar {
           break;
         }
       }
+    }
+
+    // ---- asleep on a side: it rests on whatever part of it touches the mattress first. The skin is measured (any model's
+    // build: broad shoulders, wide hips, thick thighs) while it turns, and remembered per side once it lies there
+    if (pose === "sleep" && onSide > 0.01) {
+      const k = rest.hipY / 0.92;
+      let lift = this.sideLift[down];
+      if (lift === null) {
+        lift = SLEEP_SINK * k - this.lowestAbove(spot.seat);
+        if (onSide > 0.999 && this.phase === "posed") this.sideLift[down] = lift;
+      }
+      body.position.y += lift * onSide;
+      this.group.updateMatrixWorld(true);
     }
 
     // ---- the phone, in both hands and turned to the face: put where the hands really are, a little in front of the

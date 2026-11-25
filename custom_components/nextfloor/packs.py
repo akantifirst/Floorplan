@@ -181,6 +181,9 @@ ITEM_SCHEMA = vol.Schema(
             {
                 vol.Optional("entity"): vol.All(str, vol.Match(r"^[a-z_]+\.[a-z0-9_]+$")),
                 vol.Optional("speed"): vol.All(vol.Coerce(float), vol.Range(min=0.3, max=3)),
+                # no sensor: wanders by itself between the spots that list "roam", sits and lies down a lot, keeps
+                # clear of the others and sleeps (the spot listing "roam_sleep") while one of them sleeps
+                vol.Optional("roam"): bool,
             }
         ),
         # a spot of the avatar: the sensor states that send it here and the pose it takes there (not drawn in 3D)

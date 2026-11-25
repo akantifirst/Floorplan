@@ -133,6 +133,20 @@ const EYE_HEIGHT = 1.6;
 const REST_AFTER_MS = 30000;
 /** A ceiling fan's blades and the angle between them. */
 const FAN_BLADES = 5;
+/** An animated person of the plan: its model, and for one without a sensor (roam) when it moves on next (ms). */
+interface AvatarEntry {
+  avatar: Avatar | null;
+  model: string;
+  height: number;
+  roam: boolean;
+  roamUntil: number;
+}
+/** Two people keep this far apart (m): a spot within it of where someone else is or goes counts as taken. */
+const AVATAR_CLEARANCE = 0.6;
+/** A person without a sensor picks the next spot by these weights per pose: sitting and lying down more than standing. */
+const ROAM_WEIGHT: Record<string, number> = { sit: 3, sleep: 2 };
+/** ...and stays there this long (seconds, from … to). */
+const ROAM_STAY: Record<string, [number, number]> = { sit: [120, 360], sleep: [180, 480], stand: [40, 100] };
 const FAN_SPACING = 360 / FAN_BLADES;
 
 
@@ -305,7 +319,7 @@ export class NextFloorViewer {
   private pets = new Map<string, { motion: PetMotion; room: PetRoom; random: () => number; group: Group; floorId: string }>();
   private petMat: MeshBasicMaterial | null = null;
   /** Animated people (pack items with "avatar"): furniture id -> the avatar once its model has loaded. */
-  private avatars = new Map<string, { avatar: Avatar | null; model: string; height: number }>();
+  private avatars = new Map<string, AvatarEntry>();
   /** The states of their activity sensors (furniture id -> state). */
   private avatarStates = new Map<string, string | null>();
   private avatarSpots: AvatarSpot[] = [];
@@ -3141,7 +3155,7 @@ export class NextFloorViewer {
     this.invalidate();
   }
 
-  // ---------------------------------------------------------------- avatars
+    // ---------------------------------------------------------------- avatars
 
   /** The furniture an avatar walks round on a floor: what stands on the floor (not rugs, spots, pets, people). */
   private avatarObstacles(floor: Floor): Vec2[][] {
@@ -3183,18 +3197,25 @@ export class NextFloorViewer {
         seen.add(f.id);
         const model = item.mesh ?? "avatar";
         const old = this.avatars.get(f.id);
-        if (old && old.model === model && Math.abs(old.height - f.h) < 1e-3) continue;
+        if (old && old.model === model && Math.abs(old.height - f.h) < 1e-3) {
+          old.roam = !!item.avatar?.roam;
+          continue;
+        }
         old?.avatar?.dispose();
-        const entry = { avatar: null as Avatar | null, model, height: f.h };
+        const entry: AvatarEntry = { avatar: null, model, height: f.h, roam: !!item.avatar?.roam, roamUntil: 0 };
         this.avatars.set(f.id, entry);
         const floorId = fv.floor.id;
         const at = { pos: [f.x, f.z] as Vec2, heading: (-f.rotation * Math.PI) / 180, floorId };
         void loadAvatarModel(model).then((m) => {
           if (!m || this.disposed || this.avatars.get(f.id) !== entry) return;
-          entry.avatar = new Avatar(m, Math.max(0.5, f.h), at, item.avatar?.speed ?? 1);
+          const av = new Avatar(m, Math.max(0.5, f.h), at, item.avatar?.speed ?? 1);
+          entry.avatar = av;
+          // the others' spots are passed over while another fits
+          av.free = (spot) => !this.avatarTaken(entry, spot);
           if (!this.meshLight) this.meshLight = addMeshLighting(this.root, this.renderer);
-          entry.avatar.setEnvironment(this.meshLight.env);
-          entry.avatar.update(this.avatarStates.get(f.id) ?? null, this.avatarSpots, (id) => this.avatarNav(id));
+          av.setEnvironment(this.meshLight.env);
+          if (entry.roam) av.respot(this.avatarSpots, (id) => this.avatarNav(id));
+          else av.update(this.avatarStates.get(f.id) ?? null, this.avatarSpots, (id) => this.avatarNav(id));
           this.invalidate();
         });
       }
@@ -3229,7 +3250,9 @@ export class NextFloorViewer {
       if (stand) s.stand = stand;
     }
     this.avatarSpots = spots;
-    for (const [id, a] of this.avatars) a.avatar?.update(this.avatarStates.get(id) ?? null, spots, (fid) => this.avatarNav(fid));
+    for (const [id, a] of this.avatars)
+      if (a.roam) a.avatar?.respot(spots, (fid) => this.avatarNav(fid));
+      else a.avatar?.update(this.avatarStates.get(id) ?? null, spots, (fid) => this.avatarNav(fid));
   }
 
   /** What the avatars do now: the states of their activity sensors (furniture id -> state). */
@@ -3239,9 +3262,62 @@ export class NextFloorViewer {
       if (this.avatarStates.get(id) === s) continue;
       this.avatarStates.set(id, s);
       changed = true;
-      this.avatars.get(id)?.avatar?.update(s, this.avatarSpots, (fid) => this.avatarNav(fid));
+      const entry = this.avatars.get(id);
+      if (!entry?.roam) entry?.avatar?.update(s, this.avatarSpots, (fid) => this.avatarNav(fid));
     }
     if (changed) this.invalidate();
+  }
+
+  /** A spot that another person is in or on the way to (an armchair counts as taken for every spot on it). */
+  private avatarTaken(self: AvatarEntry, spot: AvatarSpot): boolean {
+    for (const other of this.avatars.values()) {
+      if (other === self) continue;
+      const c = other.avatar?.claim();
+      if (c && c.floorId === spot.floorId && Math.hypot(c.pos[0] - spot.pos[0], c.pos[1] - spot.pos[1]) < AVATAR_CLEARANCE) return true;
+    }
+    return false;
+  }
+
+  /**
+   * The people without a sensor: while someone else sleeps they sleep too (the spot listing "roam_sleep"), otherwise
+   * now and then they move on to a random free spot listing "roam", sitting and lying down more often (and longer) than
+   * standing. Leaves a spot at once when someone else heads for it. Seconds until the next decision.
+   */
+  private roamAvatars(): number {
+    const now = Date.now();
+    let next = Infinity;
+    const nav = (fid: string) => this.avatarNav(fid);
+    for (const e of this.avatars.values()) {
+      const av = e.avatar;
+      if (!e.roam || !av) continue;
+      const mine = this.avatarSpots.filter((s) => s.states.includes("roam") || s.states.includes("roam_sleep"));
+      if (!mine.length) continue;
+      const others = [...this.avatars.values()].filter((o) => o !== e && !o.roam && o.avatar);
+      const bed = mine.find((s) => s.states.includes("roam_sleep"));
+      if (bed && others.some((o) => o.avatar!.asleep())) {
+        if (av.claim()?.id !== bed.id) av.visit(bed, this.avatarSpots, nav);
+        e.roamUntil = 0;
+        continue;
+      }
+      const at = av.claim();
+      const atBedOnly = !!at && !at.states.includes("roam");
+      if (now >= e.roamUntil || !at || atBedOnly || this.avatarTaken(e, at)) {
+        const options = mine.filter((s) => s.states.includes("roam") && s.id !== at?.id && !this.avatarTaken(e, s));
+        const weight = (s: AvatarSpot) => ROAM_WEIGHT[s.pose] ?? 1;
+        let pick: AvatarSpot | null = null;
+        let r = Math.random() * options.reduce((sum, s) => sum + weight(s), 0);
+        for (const s of options) if ((r -= weight(s)) <= 0) {
+          pick = s;
+          break;
+        }
+        pick ??= options[options.length - 1] ?? null;
+        if (pick) av.visit(pick, this.avatarSpots, nav);
+        const [lo, hi] = ROAM_STAY[pick?.pose ?? ""] ?? ROAM_STAY.stand!;
+        e.roamUntil = now + (lo + Math.random() * (hi - lo)) * 1000;
+      }
+      next = Math.min(next, (e.roamUntil - now) / 1000);
+    }
+    return Math.max(0, next);
   }
 
   /** One frame of the avatars; true while one of them moves. */
@@ -3249,6 +3325,7 @@ export class NextFloorViewer {
     if (!this.avatars.size) return false;
     const dt = this.avatarLast ? (now - this.avatarLast) / 1000 : 0;
     this.avatarLast = now;
+    const roamNext = this.roamAvatars();
     let moving = false;
     for (const a of this.avatars.values()) {
       const av = a.avatar;
@@ -3262,7 +3339,7 @@ export class NextFloorViewer {
     // while they rest no frames are drawn: a timer wakes the view for the next turn in sleep
     clearTimeout(this.avatarTimer);
     if (!moving) {
-      const next = Math.min(...[...this.avatars.values()].map((a) => a.avatar?.wakeIn() ?? Infinity));
+      const next = Math.min(roamNext, ...[...this.avatars.values()].map((a) => a.avatar?.wakeIn() ?? Infinity));
       if (Number.isFinite(next)) this.avatarTimer = setTimeout(() => this.invalidate(), next * 1000 + 50);
     }
     return moving;

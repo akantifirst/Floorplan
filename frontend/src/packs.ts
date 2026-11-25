@@ -90,7 +90,7 @@ export interface PackItem {
    * An animated person (the `mesh` is a rigged model with its own clips): an activity sensor (`entity`, or the entity
    * linked to the placed item) says what they do, and they walk to the spot item that lists that state (#avatar).
    */
-  avatar?: { entity?: string; speed?: number };
+  avatar?: { entity?: string; speed?: number; roam?: boolean };
   /** A spot of the avatar: not drawn in 3D; the states of the activity sensor that send it here and the pose it takes. */
   avatar_spot?: { states: string; pose: string };
   /** The household: a waste bin (pickup day), a mailbox (post) or a plant (soil moisture), shown from a sensor of the item. */
