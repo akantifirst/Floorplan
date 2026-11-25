@@ -4,6 +4,12 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.32.1.16] – fork: animated person
+
+### Fixed
+
+- **Feet no longer turned heel first when sitting or squatting** on rigs whose toes hang from bones of their own (Daz Genesis: Metatarsals, Toe): the toe tip is now looked for in the skin of the whole foot, not only of the foot bone, which carries just the heel.
+
 ## [0.32.1.15] – fork: animated person
 
 ### Fixed

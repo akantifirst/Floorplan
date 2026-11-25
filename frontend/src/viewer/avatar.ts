@@ -591,12 +591,17 @@ export class Avatar {
         const m = o as SkinnedMesh;
         if (!m.isSkinnedMesh) return;
         const { skinIndex, skinWeight, position } = m.geometry.attributes;
-        const at = m.skeleton.bones.indexOf(foot);
-        if (at < 0 || !skinIndex || !skinWeight) return;
+        // the foot and the bones below it: a Daz foot carries only the heel, its toes hang from Metatarsals / Toe
+        const own = new Set<number>();
+        foot.traverse((b) => {
+          const i = m.skeleton.bones.indexOf(b as Bone);
+          if (i >= 0) own.add(i);
+        });
+        if (!own.size || !skinIndex || !skinWeight) return;
         for (let i = 0; i < position.count; i++) {
           let main = 0;
           for (let k = 1; k < 4; k++) if (skinWeight.getComponent(i, k) > skinWeight.getComponent(i, main)) main = k;
-          if (skinIndex.getComponent(i, main) !== at) continue;
+          if (!own.has(skinIndex.getComponent(i, main))) continue;
           m.getVertexPosition(i, v);
           m.localToWorld(v);
           const d = Math.hypot(v.x - ankle.x, v.z - ankle.z);
