@@ -288,6 +288,6 @@ test("the baked shadow of a raised room lies on its own floor, not under it (#13
   const g = buildFloorGeometry(floorOf([raised, room("b", 4, 0, 8, 3)]), OUTER, INNER);
   const p = Array.from(g.shadow.getAttribute("position").array);
   const ys = p.filter((_, i) => i % 3 === 1);
-  assert.ok(ys.some((y) => Math.abs(y - 0.307) < 1e-6), "shadow on the raised floor");
-  assert.ok(ys.some((y) => Math.abs(y - 0.002) < 1e-6), "shadow on the level floor");
+  assert.ok(ys.some((y) => Math.abs(y - 0.309) < 1e-6), "shadow on the raised floor");
+  assert.ok(ys.some((y) => Math.abs(y - 0.004) < 1e-6), "shadow on the level floor");
 });

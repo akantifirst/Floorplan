@@ -25,7 +25,7 @@ export function buildShadow(edges: OutlineEdge[], rooms: readonly Room[], spans:
       const room = rooms.find((r) => r.points.length >= 3 && pointInPolygon(probe, r.points));
       if (!room) continue;
       // on the room's own floor: a raised or sunken room (#57) would otherwise hide the shadow under its floor (#131)
-      const y = 0.002 + roomOffset(room);
+      const y = 0.004 + roomOffset(room);
       const a2: Vec2 = [a[0] + n[0] * SHADOW_WIDTH, a[1] + n[1] * SHADOW_WIDTH];
       const b2: Vec2 = [b[0] + n[0] * SHADOW_WIDTH, b[1] + n[1] * SHADOW_WIDTH];
       // the layer is drawn double-sided, so the winding does not matter

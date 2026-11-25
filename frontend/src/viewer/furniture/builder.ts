@@ -190,7 +190,7 @@ export function contactShadow(shadow: GeoBuffer, plan: Plan, w: number, d: numbe
   const grow = Math.min(0.14, Math.max(0.06, Math.min(w, d) * 0.15));
   const dark = new Color(1 - strength, 1 - strength, 1 - strength);
   const clear = new Color(1, 1, 1);
-  const y = 0.003;
+  const y = 0.005;
   const ring = (g: number): Vec2[] => [plan(-w / 2 - g, -d / 2 - g), plan(w / 2 + g, -d / 2 - g), plan(w / 2 + g, d / 2 + g), plan(-w / 2 - g, d / 2 + g)];
   const [inner, outer] = [ring(0), ring(grow)];
   const at = (p: Vec2) => [p[0], y, p[1]];

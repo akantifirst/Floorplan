@@ -4,6 +4,12 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.33.0.4] – fork: wider gaps
+
+### Fixed
+
+- **Thresholds and window boards stop flickering on devices with a coarse depth buffer.** The wall under a floor-level opening now ends 1 cm below the floor, the wall under a higher window ends 3 mm below its sill (out of the window board's plane), the baked shadows lie 4–5 mm above the floor, and the camera's near plane is a quarter of its distance to the target (10 cm while walking).
+
 ## [0.33.0.3] – fork: sharper depth
 
 ### Fixed

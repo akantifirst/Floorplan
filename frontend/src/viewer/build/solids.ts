@@ -92,8 +92,10 @@ export function paintOfSide(poly: Vec2[], a: Vec2, b: Vec2, paint: WallPaint, ro
  * Pieces along the wall's axis, cut at every opening edge. Each piece leaves out all openings above it (two windows one
  * above the other, a window over a door), and the wall fills what remains.
  */
-/** How far the wall under a floor-level opening stays below the floor. */
-const THRESHOLD_DROP = 0.003;
+/** How far the wall under a floor-level opening stays below the floor, and under any other opening below its sill (the window
+ * board and frame cover the step). */
+const THRESHOLD_DROP = 0.01;
+const SILL_DROP = 0.003;
 
 function piecesOf(spans: Span[], height: number, bottom = -SLAB): Piece[] {
   const stops = [-Infinity, ...new Set(spans.flatMap((sp) => [sp.s0, sp.s1])).values(), Infinity].sort((a, b) => a - b);
@@ -102,11 +104,11 @@ function piecesOf(spans: Span[], height: number, bottom = -SLAB): Piece[] {
     const [t0, t1] = [stops[i], stops[i + 1]];
     if (t1 - t0 < 1e-6) continue;
     const middle = Number.isFinite(t0) && Number.isFinite(t1) ? (t0 + t1) / 2 : Number.isFinite(t0) ? t0 + 1 : t1 - 1;
-    // a door or a window down to the floor: the wall under it ends 3 mm below the floor, so its top does not lie in the floor's plane
-    // and flicker through it (fork)
+    // a door or a window down to the floor: the wall under it ends 1 cm below the floor, so its top does not lie in the floor's plane
+    // and flicker through it; under a higher window it ends a little below the sill, out of the window board's plane (fork)
     const covering = spans
       .filter((sp) => sp.s0 < middle && sp.s1 > middle)
-      .map((sp) => [sp.info.opening.sill <= 0.005 ? sp.sill - THRESHOLD_DROP : sp.sill, sp.top] as [number, number])
+      .map((sp) => [sp.sill - (sp.info.opening.sill <= 0.005 ? THRESHOLD_DROP : SILL_DROP), sp.top] as [number, number])
       .sort((a, b) => a[0] - b[0]);
     const ranges: [number, number][] = [];
     let y = bottom;

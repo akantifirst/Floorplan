@@ -233,7 +233,7 @@ const ROOF_REST = 0.94;
 export { isLowEnd };
 
 /** The camera's near plane as a share of its distance to the orbit target (see fitNearPlane). */
-const NEAR_SHARE = 0.12;
+const NEAR_SHARE = 0.25;
 
 export class NextFloorViewer {
   private readonly host: HTMLElement;
@@ -1624,12 +1624,13 @@ export class NextFloorViewer {
   }
 
   /**
-   * The camera's near plane follows its distance to what it looks at (a tenth of it, never under 10 cm). A fixed 10 cm plane spent
+   * The camera's near plane follows its distance to what it looks at (a quarter of it, never under 10 cm; 10 cm while walking). A fixed 10 cm plane spent
    * the depth buffer's precision on the first metre in front of the camera, so from the usual distance surfaces a few millimetres
    * (24-bit depth) or centimetres (16-bit depth) apart could no longer be told apart and flickered through each other (fork).
    */
   private fitNearPlane(): void {
-    const near = Math.max(0.1, this.camera.position.distanceTo(this.controls.view.target) * NEAR_SHARE);
+    // walking, walls come close: the plane stays at 10 cm
+    const near = this.controls.walk ? 0.1 : Math.max(0.1, this.camera.position.distanceTo(this.controls.view.target) * NEAR_SHARE);
     if (Math.abs(near - this.camera.near) <= near * 0.02) return;
     this.camera.near = near;
     this.camera.updateProjectionMatrix();
