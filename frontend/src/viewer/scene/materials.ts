@@ -81,7 +81,7 @@ export function makeFloorMaterials({ mask, look, theme, own, textures }: Materia
     wall: themed(foldable(solid(), "solid"), look, false, false, "wall"),
     glassWall: foldable(solid({ transparent: true, depthWrite: false }), "glass"),
     // the result is the floor colour times the vertex colour: white leaves the floor as it is
-    shadow: deepenedShadow(solid({ blending: MultiplyBlending, premultipliedAlpha: true, transparent: true, depthWrite: false, side: DoubleSide, polygonOffset: true, polygonOffsetFactor: -1 }), look),
+    shadow: deepenedShadow(solid({ blending: MultiplyBlending, premultipliedAlpha: true, transparent: true, depthWrite: false, side: DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 }), look),
     lines: themed(foldable(new LineBasicMaterial({ vertexColors: true, transparent: true, blending: lineBlending(theme, own), depthWrite: false })), look, true),
     // light on floors and walls follows the cut and the glass walls like the walls themselves
     glow: foldable(overlay({ side: DoubleSide, polygonOffset: true, polygonOffsetFactor: -3 }), "solid"),

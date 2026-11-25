@@ -4,6 +4,13 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.33.0.2] – fork: no flicker at floor level
+
+### Fixed
+
+- **Doorways and floor-level windows no longer flicker.** The wall left under a door or a window down to the floor ended exactly at floor height, so its top and the floor lay in one plane and showed through each other in steps as the view moved. It now ends 3 mm below the floor.
+- **The shadow strips along the walls no longer break up into triangles** when the floor is seen from above: their offset towards the camera now also holds for a surface seen face-on.
+
 ## [0.33.0.1] – fork: animated person
 
 ### Changed
