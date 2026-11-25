@@ -4,6 +4,13 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.32.1.15] – fork: animated person
+
+### Fixed
+
+- **Seated in an armchair, a person no longer slides sideways and jumps back** once per idle loop: the trunk stays put while sitting (a Daz idle sways the hips by 12 cm); at a desk or on the toilet the hips no longer drift either.
+- **Legs drawn up onto an armchair seat** (too short to reach the floor from the backrest) keep the knees together, tipped to one side, with the feet side by side, instead of splayed like a frog's.
+
 ## [0.32.1.14] – fork: animated person
 
 ### Added

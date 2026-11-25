@@ -242,7 +242,7 @@ const UP = new Vector3(0, 1, 0);
 const BACKREST = { z: -0.22, from: 0.12, to: 0.67, slope: 0.364 };
 /** ...and its seat cushion: its top and its front edge (m, same frame). */
 const SEAT = { top: 0.27, front: 0.5 };
-const LOUNGE = { hips: 0.15, back: -0.12, pelvis: 0.8, recline: 0.2, chest: 0.1, lean: 0.94, head: 0.07, handUp: 0.07, feet: 0.92, feetApart: 1.5 };
+const LOUNGE = { hips: 0.15, back: -0.12, pelvis: 0.8, recline: 0.2, chest: 0.1, lean: 0.94, head: 0.07, handUp: 0.07, feet: 0.92, feetApart: 1.5, tuck: 0.06 };
 /** How far the toes turn out when the pose sets the feet (radians). */
 const TOE_OUT = (10 * Math.PI) / 180;
 
@@ -962,12 +962,14 @@ export class Avatar {
       squat = ((1 - Math.cos((2 * Math.PI * t) / 3.2)) / 2) * w;
       body.position.set(0, -0.42 * squat, -0.12 * squat);
     }
-    // the turns and the place (a Mixamo idle sways the hips sideways onto one leg, which tipped one side into the bed)
-    if (pose === "sleep")
+    // the turns and the place (a Mixamo idle sways the hips sideways onto one leg, which tipped one side into the bed;
+    // a Daz idle sways them 12 cm, which slid a seated figure across the chair and back once per loop)
+    if (pose === "sleep" || pose === "sit")
       for (const [bone, q, at] of this.trunkRest) {
         bone.quaternion.slerp(q, w);
         bone.position.lerp(at, w);
       }
+    else if (pose === "sit_type" || pose === "phone") for (const [bone, , at] of this.trunkRest) bone.position.lerp(at, w);
     this.group.updateMatrixWorld(true);
     if (this.strideRoot && (pose === "sit" || pose === "sit_type" || pose === "phone" || pose === "squat" || pose === "sleep")) {
       // level the hips of a rest pose in a stride; the trunk keeps its turn, the figure stays centred
@@ -1032,8 +1034,9 @@ export class Avatar {
           const onFloor = v3(sign * rest.footX * LOUNGE.feetApart, rest.ankleY + floorY, (LOUNGE.feet * k - body.position.z) * w);
           const hipAt = r.upperLeg[s] ? body.worldToLocal(r.upperLeg[s]!.getWorldPosition(new Vector3())) : null;
           if (hipAt && hipAt.distanceTo(onFloor) > (rest.thigh + rest.shin) * 0.97) {
-            const onSeat = v3(sign * rest.footX * 1.6, SEAT.top + rest.ankleY - body.position.y, SEAT.front - 0.1 - body.position.z);
-            this.legTo(s, onFloor.lerp(onSeat, w), v3(sign * 0.35, 1, 0.1), w);
+            // the knees together and tipped to one side, the feet side by side (spread apart, the legs looked like a frog's)
+            const onSeat = v3(sign * rest.footX * 0.9 + LOUNGE.tuck * k, SEAT.top + rest.ankleY - body.position.y, SEAT.front - 0.1 - body.position.z);
+            this.legTo(s, onFloor.lerp(onSeat, w), v3(-0.5, 1, 0.1), w);
           } else this.legTo(s, onFloor, v3(sign * 0.2, 1, 0.3), w);
         } else {
           // thighs forward, shins down to the floor in front of the seat
