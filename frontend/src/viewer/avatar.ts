@@ -115,18 +115,19 @@ function findRig(root: Object3D): Rig {
       return one(...bases.flatMap((b) => [`${b}${short}`, `${b}${long}`, `${long}${b}`, `${short}${b}`]));
     });
   return {
-    hips: one("hips", "pelvis"),
-    spine: one("abdomen", "spine", "spine1"),
-    chest: one("chest", "torso", "spine2", "upperchest"),
-    neck: one("neck"),
+    // Quaternius, Mixamo, Character Creator and Daz (Genesis: hip, abdomenLower, chestUpper, lShldrBend, lThighBend …) names
+    hips: one("hips", "hip", "pelvis"),
+    spine: one("abdomen", "spine", "spine1", "abdomenlower"),
+    chest: one("chest", "torso", "spine2", "upperchest", "chestupper", "chestlower"),
+    neck: one("neck", "necklower"),
     head: one("head"),
-    upperArm: sided("upperarm", "arm"),
-    lowerArm: sided("lowerarm", "forearm"),
+    upperArm: sided("upperarm", "arm", "shldrbend"),
+    lowerArm: sided("lowerarm", "forearm", "forearmbend"),
     hand: sided("wrist", "hand"),
-    middle: sided("middle2", "handmiddle2"),
+    middle: sided("middle2", "handmiddle2", "mid2"),
     index: sided("index2", "handindex2"),
     pinky: sided("pinky2", "handpinky2"),
-    upperLeg: sided("upperleg", "thigh", "upleg"),
+    upperLeg: sided("upperleg", "thigh", "upleg", "thighbend"),
     lowerLeg: sided("lowerleg", "shin", "calf", "leg"),
     foot: sided("foot", "ankle"),
   };
@@ -495,7 +496,7 @@ export class Avatar {
     inst.traverse((o) => {
       if ((o as Bone).isBone) this.clipPose.push([o as Bone, (o as Bone).quaternion.clone(), (o as Bone).position.clone()]);
     });
-    const trunk = /^(hips|pelvis|abdomen|spine\d*|torso|chest|upperchest|neck|head|shoulder(l|r|left|right)|(left|right)shoulder|clavicle(l|r))$/;
+    const trunk = /^(hips?|pelvis|abdomen(lower|upper)?|spine\d*|torso|chest(lower|upper)?|upperchest|neck(lower|upper)?|head|shoulder(l|r|left|right)|(left|right)shoulder|clavicle(l|r)|(l|r)collar)$/;
     inst.traverse((o) => {
       const name = norm(o.name).replace(/^(mixamorig|characterarmature)/, "");
       if ((o as Bone).isBone && trunk.test(name)) this.trunkRest.push([o as Bone, (o as Bone).quaternion.clone(), (o as Bone).position.clone()]);

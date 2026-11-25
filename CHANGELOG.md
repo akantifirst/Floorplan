@@ -4,6 +4,12 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.32.1.14] – fork: animated person
+
+### Added
+
+- **Daz Genesis rigs** (hip, abdomenLower, chestUpper, neckLower, lShldrBend, lForearmBend, lThighBend, lShin, lCollar, lMid2 …) are recognised like Mixamo, Character Creator and Quaternius ones, so their poses (sitting, sleeping, the armchair) work.
+
 ## [0.32.1.13] – fork: animated person
 
 ### Added
