@@ -232,6 +232,9 @@ const ROOF_REST = 0.94;
 
 export { isLowEnd };
 
+/** The camera's near plane as a share of its distance to the orbit target (see fitNearPlane). */
+const NEAR_SHARE = 0.12;
+
 export class NextFloorViewer {
   private readonly host: HTMLElement;
   private readonly options: ViewerOptions;
@@ -1548,7 +1551,9 @@ export class NextFloorViewer {
     if (this.weatherLayer && this.skyView) this.weatherLayer.set({ ...this.skyView, low: this.skyView.low || low });
     if (this.weatherLayer) this.buildHouseShadow();
     this.highQuality = quality === "high";
-    const renderer = new WebGLRenderer({ antialias: !low, alpha: true, powerPreference: low ? "low-power" : "default" });
+    // a stencil buffer makes Safari / iOS give the canvas a 24-bit depth buffer instead of a 16-bit one, which let surfaces a few
+    // centimetres apart (a rug on the floor, a threshold) show through each other in blocks (fork)
+    const renderer = new WebGLRenderer({ antialias: !low, alpha: true, stencil: true, powerPreference: low ? "low-power" : "default" });
     const ratio = Math.min(window.devicePixelRatio || 1, low ? 1 : quality === "high" ? 2.5 : 2);
     renderer.setPixelRatio(ratio);
     this.governor = quality === "auto" && !low ? new QualityGovernor(ratio, Math.min(1, ratio)) : null;
@@ -1616,6 +1621,18 @@ export class NextFloorViewer {
 
   private hasVisibleEffects(hidden: boolean): boolean {
     return !hidden && !this.disposed && this.onScreen && this.floors.some((fv) => fv.o >= 0.02 && this.effectFloors.has(fv.floor.id));
+  }
+
+  /**
+   * The camera's near plane follows its distance to what it looks at (a tenth of it, never under 10 cm). A fixed 10 cm plane spent
+   * the depth buffer's precision on the first metre in front of the camera, so from the usual distance surfaces a few millimetres
+   * (24-bit depth) or centimetres (16-bit depth) apart could no longer be told apart and flickered through each other (fork).
+   */
+  private fitNearPlane(): void {
+    const near = Math.max(0.1, this.camera.position.distanceTo(this.controls.view.target) * NEAR_SHARE);
+    if (Math.abs(near - this.camera.near) <= near * 0.02) return;
+    this.camera.near = near;
+    this.camera.updateProjectionMatrix();
   }
 
   private resize(): void {
@@ -3600,6 +3617,7 @@ export class NextFloorViewer {
       }
       if (this.sunShadow.update(this.renderer, this.scene, this.root)) this.shadowAt = now;
     }
+    this.fitNearPlane();
     this.renderer.render(this.scene, this.camera);
     this.placeLhAnchors();
     // labels are placed only when the view or something on it moved (style writes cost layout)

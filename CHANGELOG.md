@@ -4,6 +4,13 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.33.0.3] – fork: sharper depth
+
+### Fixed
+
+- **Surfaces close together no longer flicker through each other in blocks** (rugs on the floor, thresholds, window boards), above all on iPhone, iPad and Safari. The camera's near plane now follows its distance to what it looks at instead of staying at 10 cm, and the canvas asks for a stencil buffer, which gives Safari a 24-bit depth buffer instead of a 16-bit one.
+- The extra offset of the wall shadow strips from 0.33.0.2 is taken back: with a 16-bit depth buffer it pushed the strips over thresholds and window frames.
+
 ## [0.33.0.2] – fork: no flicker at floor level
 
 ### Fixed
