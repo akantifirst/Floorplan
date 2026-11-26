@@ -104,7 +104,7 @@ export function liveScreens(hass: HomeAssistant, building: Building, links: Read
 
 /** Media players in the plan: placed as a device, or linked to furniture (TV, speaker), and games on a screen; their point is on top of it. */
 export function mediaInPlan(hass: HomeAssistant, building: Building, links: ReadonlyMap<string, FurnitureLinks> | null): MediaNow[] {
-  const spots: { entity: string; name: string; at: PlanPoint; rings?: number | null }[] = [];
+  const spots: { entity: string; name: string; at: PlanPoint; rings?: number | null; label?: string | null }[] = [];
   const games: MediaNow[] = [];
   for (const floor of building.floors) {
     for (const f of floor.furniture) {
@@ -120,7 +120,7 @@ export function mediaInPlan(hass: HomeAssistant, building: Building, links: Read
         }
       }
       const e = links?.get(f.id)?.entity;
-      if (e?.startsWith("media_player.")) spots.push({ entity: e, name, at, rings: f.sound_rings });
+      if (e?.startsWith("media_player.")) spots.push({ entity: e, name, at, rings: f.sound_rings, label: f.status });
     }
     for (const pl of floor.placements) {
       if (pl.entity_id.startsWith("media_player.")) spots.push({ entity: pl.entity_id, name: pl.name || entityName(hass, pl.entity_id), at: { floorId: floor.id, x: pl.x, z: pl.z, y: (pl.y ?? 1.1) + 0.15 }, rings: pl.sound_rings });

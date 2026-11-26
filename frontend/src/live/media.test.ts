@@ -58,3 +58,20 @@ test("a player keeps the ring size its furniture or marker asks for, 1 when it s
   ]);
   assert.deepEqual(list.map((m) => m.rings), [0, 1]);
 });
+
+test("an own label entity names what plays: its state is the title, its detail the line below; empty or unavailable falls back", () => {
+  const h = hass({
+    "media_player.bar": { state: "playing", attributes: { media_title: "uUC8P2FDnp38", media_artist: "" } },
+    "media_player.radio": { state: "playing", attributes: { media_title: "Song", media_artist: "Band" } },
+    "media_player.tv": { state: "playing", attributes: { media_title: "Film" } },
+    "sensor.bar_now": { state: "Nature", attributes: { detail: "Newbold Comyn Nature Reserve" } },
+    "sensor.radio_now": { state: "unknown", attributes: { detail: "x" } },
+    "sensor.tv_now": { state: "Kino", attributes: {} },
+  });
+  const list = mediaNow(h, [
+    { entity: "media_player.bar", name: "Bar", at, label: "sensor.bar_now" },
+    { entity: "media_player.radio", name: "Radio", at, label: "sensor.radio_now" },
+    { entity: "media_player.tv", name: "TV", at, label: "sensor.tv_now" },
+  ]);
+  assert.deepEqual(list.map((m) => [m.title, m.artist]), [["Nature", "Newbold Comyn Nature Reserve"], ["Song", "Band"], ["Kino", ""]]);
+});

@@ -4,6 +4,12 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.33.0.6] – fork: own label for what plays
+
+### Added
+
+- **Now playing label for speakers and screens.** A speaker or screen can name an entity under *Now playing label* (field `status`): while its player plays, the media card shows that entity's state as the title and its `detail` attribute as the line below – e.g. a template sensor that names the mode ("Ambient", "Nature") and the track or place. Without it, or while it is empty or unavailable, the card shows the player's own title as before.
+
 ## [0.33.0.5] – fork: no board at floor level
 
 ### Fixed

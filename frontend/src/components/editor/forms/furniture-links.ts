@@ -338,6 +338,9 @@ export function furnitureLinks(host: EditorHost, item: Furniture, actions: Furni
           hint(t("furn_charge_hint"), "nf-wide"),
         )
       : nothing}
+    ${isMediaFurniture(item.type) || isSpeakerFurniture(item.type)
+      ? linkBlock(entityField(host, t("furn_now_label"), item.status ?? null, undefined, kindOptions(() => true), set("status")), hint(t("furn_now_label_hint"), "nf-wide"))
+      : nothing}
     ${item.type === "wallbox" ? linkBlock(entityField(host, t("furn_wallbox_status"), item.status ?? null, undefined, kindOptions((id) => isBinary(id) || isNumeric(id)), set("status"))) : nothing}
     ${!lamp || item.entity
       ? html`${checkField(host, t("device_confirm"), !!item.confirm, (on) => actions.update({ confirm: on }), { title: t("device_confirm_hint") })}

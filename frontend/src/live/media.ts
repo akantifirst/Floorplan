@@ -66,8 +66,22 @@ export function showsSomething(st: { state: string; attributes: Record<string, u
 /** Whether a player is running now: playing, or a TV that is "on" with something showing (live TV, an input). */
 export const isLive = (st: { state: string; attributes: Record<string, unknown> }): boolean => st.state === "playing" || (st.state === "on" && showsSomething(st));
 
+/**
+ * The own label of a speaker or screen (its "Now playing label" entity): the entity's state is the card's title and its
+ * `detail` attribute the line below – e.g. a template sensor that names the mode ("Ambient") and the track or place.
+ * Null while the entity is missing, unavailable or empty: the card then shows the player's own title.
+ */
+function nowLabel(hass: HomeAssistant, entity: string | null | undefined): { title: string; detail: string } | null {
+  if (!entity || entity === "none") return null;
+  const st = hass.states[entity];
+  const title = st ? String(st.state).trim() : "";
+  if (!title || title === "unavailable" || title === "unknown") return null;
+  const detail = st!.attributes.detail;
+  return { title, detail: typeof detail === "string" ? detail : "" };
+}
+
 /** Media players placed in the plan (as a device, or linked to furniture such as a TV or a speaker). */
-export function mediaNow(hass: HomeAssistant, spots: readonly { entity: string; name: string; at: PlanPoint; rings?: number | null }[]): MediaNow[] {
+export function mediaNow(hass: HomeAssistant, spots: readonly { entity: string; name: string; at: PlanPoint; rings?: number | null; label?: string | null }[]): MediaNow[] {
   const out: MediaNow[] = [];
   const seen = new Set<string>();
   for (const s of spots) {
@@ -79,13 +93,14 @@ export function mediaNow(hass: HomeAssistant, spots: readonly { entity: string; 
     const str = (k: string) => (typeof a[k] === "string" ? (a[k] as string) : "");
     const app = str("app_name") || str("source") || str("app_id") || null;
     const vol = typeof a.volume_level === "number" ? a.volume_level : null;
+    const label = nowLabel(hass, s.label);
     out.push({
       entity: s.entity,
       name: s.name,
       at: s.at,
       playing: isLive(st),
-      title: str("media_title") || str("media_channel") || app || "",
-      artist: str("media_artist") || str("media_album_name") || str("media_series_title"),
+      title: label?.title || str("media_title") || str("media_channel") || app || "",
+      artist: label ? label.detail : str("media_artist") || str("media_album_name") || str("media_series_title"),
       picture: str("entity_picture") || null,
       volume: vol,
       color: appColor(app),
