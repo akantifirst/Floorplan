@@ -82,7 +82,7 @@ export class PictureLayer {
   }
 
   private load(v: PictureView): void {
-    v.image = null;
+    // the old picture stays until the new one has loaded (a live camera fetches a new snapshot every few seconds)
     const url = v.p.url;
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -100,8 +100,9 @@ export class PictureLayer {
     const p = v.p;
     const w = Math.max(0.01, p.rect.x1 - p.rect.x0);
     const h = Math.max(0.01, p.rect.y1 - p.rect.y0);
-    // about 600 px on the longer side: sharp enough on a wall, light on old tablets
-    const k = 600 / Math.max(w, h);
+    // about 600 px on the longer side: sharp enough on a wall, light on old tablets; a big picture (a projection over
+    // most of a wall, 1.5 m and more) gets 1280 px, so it stays sharp up close
+    const k = (Math.max(w, h) >= 1.5 ? 1280 : 600) / Math.max(w, h);
     const W = (v.canvas.width = Math.max(16, Math.round(w * k)));
     const H = (v.canvas.height = Math.max(16, Math.round(h * k)));
     const g = v.canvas.getContext("2d")!;

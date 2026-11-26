@@ -4,6 +4,16 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.33.0.8] – fork: live pictures
+
+### Added
+
+- **A picture frame can show a camera live.** A frame whose photo is a camera entity fetches a new snapshot every 3 seconds while it is shown (not in a hidden tab or at night); the old picture stays until the new one has loaded, so it does not flicker.
+
+### Changed
+
+- **Big pictures are sharper.** A picture of 1.5 m and more (a projection over most of a wall) is drawn at 1280 px instead of 600 px.
+
 ## [0.33.0.7] – fork: demo mode
 
 ### Added

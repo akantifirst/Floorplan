@@ -76,6 +76,8 @@ export type MarkerMode = "none" | "important" | "all";
 export type ClockCorner = "top_left" | "top_right" | "bottom_left" | "bottom_right";
 
 const LOCK_KEY = "nextfloor.lock3d";
+/** How often a frame showing a camera fetches a new snapshot. */
+const LIVE_PICTURE_MS = 3000;
 
 
 /** Below this stage height (px) the floor pictures get small and stop above the buttons at the bottom. */
@@ -593,6 +595,8 @@ export class NfView3d extends LitElement {
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    if (this.livePictureTimer) clearInterval(this.livePictureTimer);
+    this.livePictureTimer = null;
     this.stopPlugins?.();
     this.stopPlugins = null;
     this.listenToAnnouncements(false);
@@ -901,10 +905,31 @@ export class NfView3d extends LitElement {
     for (const floor of b.floors)
       for (const f of floor.furniture) {
         if (!f.picture || !furnitureShown(hass, f)) continue;
-        const url = pictureUrl(hass, f.picture, (id) => this.storedPicture(hass, id));
+        let url = pictureUrl(hass, f.picture, (id) => this.storedPicture(hass, id));
+        // a camera's snapshot URL only changes with its token (every few minutes): a step of the clock fetches a new one
+        if (url && f.picture.startsWith("camera.")) url += `${url.includes("?") ? "&" : "?"}nf=${Math.floor(Date.now() / LIVE_PICTURE_MS)}`;
         if (url) out.push({ furnitureId: f.id, floorId: floor.id, url, border: f.picture_border ?? 0, fit: f.picture_fit === "contain" ? "contain" : "cover" });
       }
     return out;
+  }
+
+  /** Frames that show a camera (a live picture, e.g. the projector's screen): fetched again every few seconds while shown. */
+  private livePictureTimer: ReturnType<typeof setInterval> | null = null;
+  private livePictureBuilding: Building | null = null;
+
+  private watchLivePictures(b: Building): void {
+    const live = b.floors.some((floor) => floor.furniture.some((f) => f.picture?.startsWith("camera.") && furnitureShown(this.hass, f)));
+    this.livePictureBuilding = live ? b : null;
+    if (live && !this.livePictureTimer) {
+      this.livePictureTimer = setInterval(() => {
+        const building = this.livePictureBuilding;
+        if (!building || !this.viewer || !this.hass || document.hidden || this.dimmed) return;
+        this.viewer.setPictures(this.framePictures(this.hass, building));
+      }, LIVE_PICTURE_MS);
+    } else if (!live && this.livePictureTimer) {
+      clearInterval(this.livePictureTimer);
+      this.livePictureTimer = null;
+    }
   }
 
   private storedPicture(hass: HomeAssistant, id: string): string | null {
@@ -1135,6 +1160,7 @@ export class NfView3d extends LitElement {
     // TV screens: a TV or monitor linked to a media player that runs shows what runs
     v.setLiveScreens(this.dimmed ? [] : liveScreens(hass, b, this.furnitureLinks));
     v.setPictures(this.framePictures(hass, b));
+    this.watchLivePictures(b);
     // lawn sprinklers that water now (at night on the wall tablet effects rest)
     v.setLiveWater(this.dimmed ? [] : liveSprays(hass, b, this.furnitureLinks));
     const persons = SHOW_PRESENCE ? personsInRooms(hass, b) : [];
