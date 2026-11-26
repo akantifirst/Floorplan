@@ -4,6 +4,12 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.33.0.5] – fork: no board at floor level
+
+### Fixed
+
+- **A floor-level door or window with boards set to "inside" no longer flickers in front of its frame.** Its window board lay level with the floor and reached 7 cm into the room; a floor-level opening now gets no inside board.
+
 ## [0.33.0.4] – fork: wider gaps
 
 ### Fixed
