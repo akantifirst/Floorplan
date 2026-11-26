@@ -28,3 +28,22 @@ test("controlHass hands out the real hass unless view only is on", () => {
   assert.notEqual(controlHass(real, true), real);
   assert.equal(controlHass(undefined, true), undefined);
 });
+
+test("demo mode lays the demo's states over the real ones, sends nothing, and is off without the switch", async () => {
+  const calls: string[] = [];
+  const states = {
+    "light.desk": { entity_id: "light.desk", state: "off", attributes: { friendly_name: "Desk" } },
+    "sensor.nextfloor_demo": { entity_id: "sensor.nextfloor_demo", state: "on", attributes: { states: { "light.desk": { state: "on", attributes: { brightness: 200 } }, "sensor.desk_position": "120" } } },
+  };
+  const real = { ...hass(calls), states } as unknown as HomeAssistant;
+  const demo = controlHass(real, false);
+  assert.equal(demo.states["light.desk"].state, "on");
+  assert.equal(demo.states["light.desk"].attributes.brightness, 200);
+  assert.equal(demo.states["light.desk"].attributes.friendly_name, "Desk");
+  assert.equal(demo.states["sensor.desk_position"].state, "120");
+  assert.equal(controlHass(real, false), demo);
+  await demo.callService("light", "toggle", {});
+  assert.deepEqual(calls, []);
+  const off = { ...real, states: { ...states, "sensor.nextfloor_demo": { ...states["sensor.nextfloor_demo"], state: "off" } } } as unknown as HomeAssistant;
+  assert.equal(controlHass(off, false), off);
+});

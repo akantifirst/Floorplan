@@ -4,6 +4,12 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.33.0.7] – fork: demo mode
+
+### Added
+
+- **Demo mode.** While `sensor.nextfloor_demo` is "on", the 3D view lays its `states` attribute (`{ entity_id: state }` or `{ entity_id: { state, attributes } }`) over Home Assistant's states: a template sensor can play a made-up day – the figure, the desk, the lamps, the music – to show the house without switching a device. Taps send nothing to Home Assistant meanwhile.
+
 ## [0.33.0.6] – fork: own label for what plays
 
 ### Added
