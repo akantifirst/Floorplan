@@ -103,6 +103,12 @@ export interface PackItem {
   cover_rest?: number;
   /** Scale every part evenly when the item is resized, instead of keeping legs, arms and plates at their size. */
   stretch?: boolean;
+  /**
+   * A sit/stand desk (fork): how its height changes, as fractions of its standard height. Below `from` nothing moves (feet), from
+   * `from` to `to` the parts stretch (telescopic legs), above `to` they move up whole (the top, monitors, a lamp); `top` is the
+   * desk's surface. With a height entity the item is drawn with its surface at the entity's height.
+   */
+  lift?: { from: number; to: number; top: number };
   /** Stairs: cut a stairwell into the floor above where they reach it. */
   hole?: boolean;
   /** A lamp: the way its light spreads. */
@@ -196,8 +202,39 @@ const fitted = new WeakMap<PackItem, Map<string, PackPart[]>>();
  * size and its distance from that end (a sofa's 20 cm arms, a table's legs and its top plate), the middle stretches. Turned parts keep
  * their own size and only move; vehicles and items marked `stretch` scale evenly.
  */
+/** Where a height `y` (m) of a lifting desk's standard size `from` lands at height `to`: feet stay, legs stretch, the rest moves up. */
+function liftAxis(y: number, lift: NonNullable<PackItem["lift"]>, from: number, to: number): number {
+  const [lo, hi] = [lift.from * from, lift.to * from];
+  if (y <= lo) return y;
+  if (y >= hi) return y + (to - from);
+  return lo + ((y - lo) * (hi - lo + to - from)) / Math.max(1e-6, hi - lo);
+}
+
+/** The parts of a lifting desk at height h (its width and depth as made): see `PackItem.lift`. */
+function liftedParts(item: PackItem, h: number): PackPart[] {
+  const lift = item.lift!;
+  const sh = item.size[2];
+  const y = (v: number) => liftAxis(v * sh, lift, sh, h) / h;
+  return item.parts.map((p): PackPart => {
+    if (p.shape === "sweep") return { ...p, stations: (p.stations ?? []).map(([z, y0, y1, w]) => [z, y(y0), y(y1), w]) };
+    const [y0, y1] = [y(p.y), y(p.y + p.h)];
+    return { ...p, y: y0, h: y1 - y0 };
+  });
+}
+
 export function fittedParts(item: PackItem, w: number, d: number, h: number): PackPart[] {
   const [sw, sd, sh] = item.size;
+  if (item.lift && Math.abs(w - sw) < 1e-4 && Math.abs(d - sd) < 1e-4 && Math.abs(h - sh) >= 1e-4) {
+    const key = `lift|${h.toFixed(4)}`;
+    let cache = fitted.get(item);
+    const known = cache?.get(key);
+    if (known) return known;
+    const parts = liftedParts(item, h);
+    if (!cache) fitted.set(item, (cache = new Map()));
+    if (cache.size > 32) cache.clear();
+    cache.set(key, parts);
+    return parts;
+  }
   if (item.vehicle || item.stretch || (Math.abs(w - sw) < 1e-4 && Math.abs(d - sd) < 1e-4 && Math.abs(h - sh) < 1e-4)) return item.parts;
   const key = `${w.toFixed(4)}|${d.toFixed(4)}|${h.toFixed(4)}`;
   let cache = fitted.get(item);

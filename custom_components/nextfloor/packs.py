@@ -202,6 +202,9 @@ ITEM_SCHEMA = vol.Schema(
         vol.Optional("gangs"): vol.All(vol.Coerce(int), vol.Range(min=1, max=8)),
         # scale every part evenly when resized, instead of keeping legs, arms and plates at their size
         vol.Optional("stretch", default=False): bool,
+        # a sit/stand desk (fork): feet stay below "from", legs stretch up to "to", the rest moves up; "top" is its surface
+        # (fractions of the standard height); with a height entity the surface is drawn at the entity's height
+        vol.Optional("lift"): vol.Schema({vol.Required("from"): _LEVEL, vol.Required("to"): _LEVEL, vol.Required("top"): _LEVEL}),
         # stairs: when it reaches the floor above, it cuts a stairwell opening into that floor
         vol.Optional("hole", default=False): bool,
         # a lamp: how its light spreads (like the built-in lamp of that kind)

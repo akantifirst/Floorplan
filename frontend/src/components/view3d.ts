@@ -57,6 +57,7 @@ import { fanSpin } from "../entities/fans.ts";
 import { sceneEntitiesOn } from "../entities/misc.ts";
 import { fixtureGlow, shinesAsLamp } from "../entities/kinds.ts";
 import { furnitureShown, hiddenFurniture, withoutHidden } from "../entities/visibility.ts";
+import { deskHeightKey, withDeskHeights } from "../entities/desk-height.ts";
 import { pictureUrl } from "../entities/pictures.ts";
 import { fetchImage, markNoteDone } from "../api.ts";
 import { ceilingOf, centroid, furnitureFootprint, groundLevel, isLamp, isStatusDevice, LAMP_MODEL, outdoorGround, outdoorTopAt, pointInPolygon, polygonArea, surfaceHeight, type Building, type Furniture, type Placement, type StartView } from "../model.ts";
@@ -156,6 +157,7 @@ export class NfView3d extends LitElement {
     central: { attribute: false },
     centralOpen: { attribute: false },
     keepCamera: { attribute: false },
+    sunShadows: { attribute: false },
     plain: { attribute: false },
     rightBack: { attribute: false },
     templateName: { attribute: false },
@@ -413,6 +415,7 @@ export class NfView3d extends LitElement {
   declare centralOpen: boolean;
   /** Switching floors keeps the camera's side, height and distance. */
   declare keepCamera: boolean;
+  declare sunShadows: boolean;
   /** Only the floor plan: no furniture in 3D. */
   declare plain: boolean;
   /** A short right click goes back one step. */
@@ -549,6 +552,7 @@ export class NfView3d extends LitElement {
     })();
     this.roomLabels = true;
     this.deviceLabels = true;
+    this.sunShadows = true;
     this.floorStack = "dim";
     this._low = false;
     this.panelOpen = false;
@@ -771,6 +775,7 @@ export class NfView3d extends LitElement {
       this.viewer.setAutoOrbit(this.autoOrbit ? 0.06 : 0);
       this.viewer.setKeepRoof(this.keepRoof);
       this.viewer.setKeepCamera(!!this.keepCamera);
+      this.viewer.setSunShadows(this.sunShadows !== false);
       this.viewer.setPlain(!!this.plain);
       this.viewer.setRightBack(!!this.rightBack);
       this.viewer.setZoom(this.zoom ?? 1);
@@ -862,6 +867,7 @@ export class NfView3d extends LitElement {
     if (changed.has("explode")) v.setExplode(this.explode);
     if (changed.has("keepRoof")) v.setKeepRoof(this.keepRoof);
     if (changed.has("keepCamera")) v.setKeepCamera(!!this.keepCamera);
+    if (changed.has("sunShadows")) v.setSunShadows(this.sunShadows !== false);
     if (changed.has("plain")) v.setPlain(!!this.plain);
     if (changed.has("rightBack")) v.setRightBack(!!this.rightBack);
     if (changed.has("zoom")) v.setZoom(this.zoom ?? 1);
@@ -946,13 +952,20 @@ export class NfView3d extends LitElement {
   }
 
   /** The building as the 3D view draws it: without the pieces whose visibility condition is not met. */
+  /** What the shown building depends on beyond the plan: hidden pieces, hidden layers and live desk heights. */
+  private shownKey(hass: HomeAssistant | undefined, b: Building): string {
+    const layers = b.floors.filter((f) => f.layer && this.hiddenLayers.has(f.id)).map((f) => `layer:${f.id}`);
+    return [...hiddenFurniture(hass, b), ...layers, ...deskHeightKey(hass, b)].join(",");
+  }
+
   private shownBuilding(hass: HomeAssistant | undefined): Building {
     const b = this.building!;
     const hidden = hiddenFurniture(hass, b);
-    const layers = b.floors.filter((f) => f.layer && this.hiddenLayers.has(f.id)).map((f) => f.id);
-    const key = [...hidden, ...layers.map((id) => `layer:${id}`)].join(",");
+    const key = this.shownKey(hass, b);
     if (this.shownFor?.building === b && this.shownFor.key === key) return this.shownFor.shown;
-    const shown = withoutHidden(b, hidden);
+    const layers = b.floors.filter((f) => f.layer && this.hiddenLayers.has(f.id)).map((f) => f.id);
+    // a sit/stand desk is drawn at its live height (#214)
+    const shown = withDeskHeights(hass, withoutHidden(b, hidden));
     this.shownFor = { building: b, key, shown: layers.length ? { ...shown, floors: shown.floors.filter((f) => !layers.includes(f.id)) } : shown };
     return this.shownFor.shown;
   }
@@ -1014,7 +1027,7 @@ export class NfView3d extends LitElement {
     const changed = force || this.watched.some((id) => this.shownStates.get(id) !== hass.states[id]);
     if (!changed) return;
     // a piece shown only while a helper is on (seasonal decoration) comes and goes with it
-    if (hiddenFurniture(hass, b).join(",") !== this.shownFor?.key) v.setBuilding(this.shownBuilding(hass));
+    if (this.shownKey(hass, b) !== this.shownFor?.key) v.setBuilding(this.shownBuilding(hass));
     this.shownStates = new Map(this.watched.map((id) => [id, hass.states[id]]));
     this.refreshToday(b);
     this.refreshForecast(b);
@@ -1391,7 +1404,7 @@ export class NfView3d extends LitElement {
         // furniture with a state: a glowing plate on the item while its entity is on, occupied or home;
         // two entities light the halves (left/right of a bed, bottom/top of a bunk bed)
         const faces = this.stateFaces(hass, f);
-        if (faces.length) screens.set(f.id, { color: faces[0].color, level: faces[0].level, faces });
+        if (faces.length) screens.set(f.id, { color: faces[0].color, level: faces[0].level, faces, ...(f.on_effect ? { effect: f.on_effect } : {}) });
         // a light switch or socket: each button glows with its own entity; a tap switches it (or asks which, with several)
         // the household: a bin's pickup, post in the mailbox, a thirsty plant
         const care = householdKind(f.type);
@@ -1743,7 +1756,9 @@ export class NfView3d extends LitElement {
       const on = isActive(st) || st.state === "home" || st.state === "occupied" || st.state === "on";
       if (!on) continue;
       const lit = kindOf(ref) === "light" ? lightGlow(st) : null;
-      out.push({ part, color: lit ? lit.color : [1, 0.71, 0.28], level: lit ? lit.level : 0.85 });
+      const m = f.on_color ? /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(f.on_color) : null;
+      const own: [number, number, number] | null = m ? [parseInt(m[1], 16) / 255, parseInt(m[2], 16) / 255, parseInt(m[3], 16) / 255] : null;
+      out.push({ part, color: lit ? lit.color : (own ?? [1, 0.71, 0.28]), level: lit ? lit.level : 0.85 });
     }
     return out;
   }

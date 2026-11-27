@@ -115,7 +115,7 @@ export interface Opening {
   hinge: "left" | "right";
   /** One leaf, or two (double door, French window) opening from the middle. */
   leaves: 1 | 2;
-  /** Doors swing into their room ("in") or to the other side ("out"). */
+  /** Doors swing into their room ("in") or to the other side ("out"); a window with "out" has its inside and outside swapped (#213). */
   swing: "in" | "out";
   /** Look of the door or window (null = automatic: a front door in an exterior wall, else a room door). */
   style?: OpeningStyle | null;
@@ -279,6 +279,11 @@ export interface Furniture extends LightEffectConfig {
   /** A second state entity for the other half: left/right (a double bed) or bottom/top (a bunk bed). */
   state_entity2?: EntityRef;
   state_split?: "left_right" | "top_bottom" | null;
+  /** While the state entity is on: the glow's own colour (#rrggbb; null = amber, or the light's own colour) and animation (pulse, flicker, rainbow or a plugin's; null = steady). */
+  on_color?: string | null;
+  on_effect?: string | null;
+  /** A sit/stand desk: the entity with its current height (cm, mm or m by its unit); the top is drawn there (#214). */
+  height_entity?: string | null;
   /** Household items: the sensor they show – a bin's pickup, a mailbox's post, a plant's soil moisture (null = none). */
   care_entity?: string | null;
   /** Plants: the soil moisture below which they are thirsty (%, default 20). */

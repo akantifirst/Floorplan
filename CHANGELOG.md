@@ -4,6 +4,17 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.36.0.2.1] – fork: upstream 0.36.0.2 merged
+
+### Changed
+
+- Upstream 0.36.0.2 merged into the fork (desk height from an entity, #214). The fork's own changes below stay.
+
+### Added
+
+- **Pack desks follow their height entity too.** A pack item with a `lift` (`from`, `to`, `top` as fractions of its height) is a sit/stand desk: with *Height from* set, its feet stay, its legs stretch and its top with everything on it (monitors, a lamp) moves up, so its surface sits at the entity's height.
+- **What is fixed to a desk moves with it.** Pieces with their own mount height on the desk's footprint, from 15 cm under its top to 5 cm above (LED strips under the top, a presence sensor), move up and down with the desk.
+
 ## [0.33.0.8] – fork: live pictures
 
 ### Added
@@ -168,6 +179,61 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 ### Added
 
 - **An animated person who lives in the flat.** A pack item with `"avatar": {"entity": "sensor.…"}` and a rigged model as its `mesh` (a `.glb` with its own clips, e.g. Quaternius' CC0 characters) walks smoothly through the doors to the spot that matches the state of its activity sensor and settles into that spot's pose: sitting and typing at the desk, standing at the standing desk, working at the counter, reaching into the shelf, looking at the phone on the toilet, sleeping in bed, squats, boxing, idling in an armchair. Spots are pack items with `"avatar_spot": {"states": "desk_sit_69,desk_sit_80", "pose": "sit_type"}`; they are not drawn in 3D, their height is the seat height. A state without a spot (`away`) sends the person to the spot with the pose `away` (the front door) and hides them; several spots for one state are visited in turn.
+
+## [0.36.0.2]
+
+### Fixed
+
+- **Windows and blinds the wrong way round** (thanks @biersack71, #213): a window in a wall drawn by hand took the left side of the wall (as drawn) as the room side, so a wall drawn the other way put the blind box inside and opened the window outwards. Such a window now faces the room beside the wall, whichever way the wall was drawn. And every window has *Swap inside/outside* in its form for the cases the plan cannot tell.
+
+## [0.36.0.1]
+
+### Fixed
+
+- **The realistic look still stuttered heavily on slow tablets in Auto quality** (thanks @Noack1978, #231): frames slower than 10 fps were not counted at all, so on a tablet that slow Auto never noticed anything and never turned the sun shadows off. Every frame now counts (only pauses of more than 1.5 s are left out), and a slow tablet is measured within a few seconds instead of a few dozen frames: the sun shadows go first, then pixels, then the simple look.
+
+## [0.36.0]
+
+### Added
+
+- **Sit/stand desk height from an entity** (thanks @akantifirst, #214): a desk has *Height from* for a sensor, number or input_number with its current height (cm, mm, m or inches by its unit; without a unit, values above 10 count as cm). The top, legs and monitor are drawn at that height in 3D and follow every change; the plan keeps its own height. Covers reporting 0–100 % are not supported.
+
+## [0.35.0.2]
+
+### Fixed
+
+- **The realistic look still stuttered a little in Auto quality** (thanks @Noack1978, #231): Auto turned the sun shadows off only when the median frame fell below 26 fps, so uneven frames (smooth most of the time, every third or fourth frame slow) kept them on. The shadows now go as soon as the slower quarter of frames runs below 40 fps; the pixels stay as they are.
+
+## [0.35.0.1]
+
+### Fixed
+
+- **A fixed device whose pin lies outside every room could not be released** (thanks @tichris0, #240): the room's device list offered only *Place* for it, and its name could not be clicked, so its form with the lock button never opened. Such a pin now shows *outside the rooms* (with 🔒 when fixed) and can be selected from the list; *Place* on a fixed pin asks before it moves it.
+
+## [0.35.0]
+
+### Added
+
+- **The card can follow the panel's auto look** (thanks @luotongda, #237): the dashboard card has `auto_day` and `auto_night` (default `day` and `neon`) for `theme: auto`, and `theme` accepts all looks, including nordic, warm_evening and minimal. The card editor shows both choices when the theme is auto.
+
+### Fixed
+
+- The card docs said the default theme is `auto`; it is `neon`. They now also say the card does not read the panel's Look (#235).
+
+## [0.34.0]
+
+### Added
+
+- **Own colour and effect for a device that is on** (thanks @Gifford47, #229): with *State from* set, the item's form has *Colour while on* and *Effect while on* (steady, pulse, flicker, rainbow). While the entity counts as on, the glow takes that colour and runs that animation; a light's own colour still wins, and an item without them looks exactly as before.
+- **Windows in dormers** (thanks @kutzera, #230): a dormer's front gable is a face of its own (`<dormer id>:front`): with a dormer selected, *Add roof window* puts the window there, and the *Roof face* choice of any roof window offers it. It lies in front of the gable wall (gable dormers only; it cannot be picked on the plan, only in the list). The window takes a contact, tilt, blind and window motor like any roof window and is drawn in the gable wall.
+- **A switch for sun shadows** (#231, thanks @Noack1978): *Shadows* (panel chip in the realistic look) and `sun_shadows: false` (card) turn the sun shadows and sky light off, which saves a lot of work on tablets. In *Auto* quality the shadows now also go first when frames are too slow, even where the pixel ratio cannot be lowered any further, and stay off until the quality is chosen again.
+- **The roof in the 3D print** (thanks @Tkong1, #232): the STL export now contains the roof sections at their resting place on the house, not only walls and floors.
+
+## [0.33.0.1]
+
+### Fixed
+
+- **The realistic look stuttered since 0.33.0** (#231, thanks @Noack1978 and @Jkazama6): the new sun shadows and sky light cost 60 lookups per pixel and frame, too much for tablets, and the automatic quality answered by changing the resolution up and down. Now, when the frames are too slow in the realistic look, the shadows and sky light are switched off first and the resolution stays; choosing a quality yourself starts them again.
 
 ## [0.33.0]
 

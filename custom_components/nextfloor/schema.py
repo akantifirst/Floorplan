@@ -158,7 +158,7 @@ OPENING_SCHEMA = vol.Schema(
         vol.Optional("hinge", default="left"): vol.In(["left", "right"]),
         # double doors and windows: two leaves, the second with a contact of its own
         vol.Optional("leaves", default=1): vol.In([1, 2]),
-        # doors: swing into the room ("in") or to the other side ("out")
+        # doors: swing into the room ("in") or to the other side ("out"); windows: "out" swaps inside and outside
         vol.Optional("swing", default="in"): vol.In(["in", "out"]),
         # look: None = automatic (front door in an exterior wall, room door inside; plain window)
         vol.Optional("style", default=None): vol.Any(None, vol.In(_OPENING_STYLES)),
@@ -406,6 +406,10 @@ FURNITURE_SCHEMA = vol.Schema(
         vol.Optional("state_entity", default=None): vol.Any(None, vol.All(str, vol.Length(max=255))),
         vol.Optional("state_entity2", default=None): vol.Any(None, vol.All(str, vol.Length(max=255))),
         vol.Optional("state_split", default=None): vol.Any(None, vol.In(["left_right", "top_bottom"])),
+        # the glow while the state entity is on: its own colour and animation (None = amber / steady)
+        vol.Optional("on_color", default=None): vol.Any(None, vol.Match(r"^#[0-9a-fA-F]{6}$")),
+        vol.Optional("on_effect", default=None): vol.Any(None, vol.All(str, vol.Length(max=64))),
+        vol.Optional("height_entity", default=None): vol.Any(None, vol.All(str, vol.Length(max=255))),
         # lamps: a second entity with the colour and brightness (a relay switches, the bulb knows its colour)
         vol.Optional("color_entity", default=None): vol.Any(None, vol.All(str, vol.Length(max=255))),
         # lamps: further lights of the same fixture (night light, ambient ring)

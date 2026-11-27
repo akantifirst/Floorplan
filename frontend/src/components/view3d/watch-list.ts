@@ -46,7 +46,7 @@ function furnitureIds(inputs: WatchInputs): MaybeId[] {
     // a washer's, dryer's or dishwasher's time left comes from a sensor next to its switch
     ...pieces.filter((m) => m.type === "washer" || m.type === "dryer" || m.type === "dishwasher").flatMap((m) => deviceSiblings(hass, furnitureLinks.get(m.id)?.entity ?? furnitureLinks.get(m.id)?.power).filter((id) => id.startsWith("sensor."))),
     ...pieces.flatMap((m) => screenWatched(hass, m)),
-    ...pieces.flatMap((m) => [m.door_left, m.door_right, m.soc, m.status, m.charge, m.export, m.temp_entity, m.temp_entity2, ...(m.temps ?? []).map((x) => x.entity)]),
+    ...pieces.flatMap((m) => [m.height_entity, m.door_left, m.door_right, m.soc, m.status, m.charge, m.export, m.temp_entity, m.temp_entity2, ...(m.temps ?? []).map((x) => x.entity)]),
     ...pieces.filter((m) => m.type === "robot_vacuum").map((m) => robotRoomSensor(hass, furnitureLinks.get(m.id)?.entity ?? null, m.room_sensor)),
     // an animated person's activity sensor: the item's own link, else the one its pack names (not a link of the piece,
     // so nothing else would wake the view when it changes and the person would stay put until some other entity changed)
