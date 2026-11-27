@@ -4,6 +4,12 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.36.0.2.3] – fork: strips ride with the desk (2)
+
+### Fixed
+
+- The lamps of furniture (LED strips) are built from the desk at its live height too; 0.36.0.2.2 only fixed placed devices.
+
 ## [0.36.0.2.2] – fork: strips ride with the desk
 
 ### Fixed
