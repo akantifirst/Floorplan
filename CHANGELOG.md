@@ -4,6 +4,12 @@ All notable changes to NextFloor, newest first. Every release lists what is **Ad
 
 ## [Unreleased]
 
+## [0.36.0.2.2] – fork: strips ride with the desk
+
+### Fixed
+
+- **LED strips and lamps fixed under a sit/stand desk's top now move with it.** The lamps were built from the plan, not from the desk at its live height, so the strips stayed where the plan had them.
+
 ## [0.36.0.2.1] – fork: upstream 0.36.0.2 merged
 
 ### Changed

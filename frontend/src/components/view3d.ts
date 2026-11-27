@@ -1034,7 +1034,8 @@ export class NfView3d extends LitElement {
 
     const consumers = findConsumers(hass, b);
     // hidden layers bring no pins either
-    const deviceMarkers = buildMarkers(hass, b.floors.some((f) => f.layer && this.hiddenLayers.has(f.id)) ? this.shownBuilding(hass) : b);
+    // lamps fixed to a sit/stand desk (LED strips under its top) move with its live height (fork)
+    const deviceMarkers = buildMarkers(hass, b.floors.some((f) => f.layer && this.hiddenLayers.has(f.id)) ? this.shownBuilding(hass) : withDeskHeights(hass, b));
     this.placementInfo = new Map(deviceMarkers.map((m) => [m.id, { floorId: m.floorId, roomId: m.roomId, x: m.x, z: m.z, y: m.y, rotation: m.rotation ?? 0 }]));
     const furniture = this.furnitureMarkers(hass, b, new Set(deviceMarkers.map((m) => m.id)), new Set(consumers.map((c) => c.powerEntity)));
     consumers.push(...furniture.consumers);
